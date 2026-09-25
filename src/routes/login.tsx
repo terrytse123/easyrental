@@ -46,7 +46,7 @@ function LoginPage() {
     const password = String(data.get("password") ?? "");
     const confirm = String(data.get("confirm") ?? "");
     const name = String(data.get("name") ?? "").trim();
-    const modeSent = String(data.get("mode") || accountMode);
+    const modeSent = accountMode;
     if (!email.includes("@") || password.length < 8) {
       setStatus("請輸入電郵，密碼至少 8 個字。");
       return;
@@ -76,13 +76,13 @@ function LoginPage() {
         busy.current = false;
         const message = result.message ?? "";
         setStatus(
-          /exist/i.test(message)
-            ? "這個電郵已經開過戶。請用登入。"
-            : /no account/i.test(message)
+          accountMode === "signin" || /invalid email or password/i.test(message)
+            ? /no account/i.test(message)
               ? "沒有這個戶口。請先開戶口。"
-              : /invalid email or password/i.test(message)
-                ? "電郵或密碼不正確。"
-                : message || "未能儲存。",
+              : "電郵或密碼不正確。"
+            : /exist/i.test(message)
+              ? "這個電郵已經開過戶。請用登入。"
+              : message || "未能儲存。",
         );
         return;
       }

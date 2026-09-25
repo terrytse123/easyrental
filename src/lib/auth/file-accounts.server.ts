@@ -107,7 +107,7 @@ export async function openEmailAccount(input: {
       const token = await startSession(sql, found.id);
       return { ok: true, token, user: { id: found.id, name: found.name, email: found.email } };
     }
-    return { ok: false, message: "User already exists. Use another email." };
+    return { ok: false, message: "Invalid email or password" };
   }
 
   const id = randomBytes(16).toString("hex");
@@ -127,7 +127,7 @@ export async function openEmailAccount(input: {
       const token = await startSession(sql, row.id);
       return { ok: true, token, user: { id: row.id, name: row.name, email: row.email } };
     }
-    if (row) return { ok: false, message: "User already exists. Use another email." };
+    if (row) return { ok: false, message: "Invalid email or password" };
     throw error;
   }
   const token = await startSession(sql, id);
