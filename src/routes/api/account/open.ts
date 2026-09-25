@@ -101,14 +101,6 @@ async function openAccount(request: Request) {
     } catch {
       /* logging must not block sign-in */
     }
-    if (direct && signed.ok) {
-      const headers = new Headers({
-        location: "/desk",
-        "cache-control": "no-store",
-      });
-      headers.append("set-cookie", sessionCookie(signed.token));
-      return new Response(null, { status: 302, headers });
-    }
     const wantsHtml = wantsPage || direct;
     if (!wantsHtml) return jsonResult(signed, signed.ok ? signed.token : undefined);
     if (!signed.ok) {
@@ -130,6 +122,8 @@ async function openAccount(request: Request) {
 const saved = ${json};
 sessionStorage.setItem("grok-auth.bearer-token", saved.token);
 sessionStorage.setItem("grok-auth.user", JSON.stringify(saved.user));
+localStorage.setItem("grok-auth.bearer-token", saved.token);
+localStorage.setItem("grok-auth.user", JSON.stringify(saved.user));
 location.replace("/desk");
 </script><p><a href="/desk">進入帳簿</a></p>`, 200, signed.token);
   } catch (error) {

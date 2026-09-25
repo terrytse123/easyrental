@@ -56,27 +56,38 @@ export type StoredUser = {
   isDevFallback: boolean;
 };
 
-/** The stored preview bearer token, or null. */
-export function getBearerToken(): string | null {
+function readStored(key: string): string | null {
   if (typeof window === "undefined") return null;
   try {
-    return window.sessionStorage.getItem(BEARER_KEY);
+    return window.sessionStorage.getItem(key) || window.localStorage.getItem(key);
   } catch {
     return null;
   }
 }
 
-export function setBearerToken(token: string | null): void {
+function writeStored(key: string, value: string | null): void {
   if (typeof window === "undefined") return;
   try {
-    if (token) window.sessionStorage.setItem(BEARER_KEY, token);
-    else {
-      window.sessionStorage.removeItem(BEARER_KEY);
-      window.sessionStorage.removeItem(USER_KEY);
+    if (value) {
+      window.sessionStorage.setItem(key, value);
+      window.localStorage.setItem(key, value);
+    } else {
+      window.sessionStorage.removeItem(key);
+      window.localStorage.removeItem(key);
     }
   } catch {
     /* storage unavailable — ignore */
   }
+}
+
+/** The stored preview bearer token, or null. */
+export function getBearerToken(): string | null {
+  return readStored(BEARER_KEY);
+}
+
+export function setBearerToken(token: string | null): void {
+  writeStored(BEARER_KEY, token);
+  if (!token) writeStored(USER_KEY, null);
 }
 
 /**
@@ -87,7 +98,7 @@ export function setBearerToken(token: string | null): void {
 export function getStoredUser(): StoredUser | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.sessionStorage.getItem(USER_KEY);
+    const raw = readStored(USER_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as StoredUser;
     return parsed?.id ? parsed : null;
@@ -99,8 +110,8 @@ export function getStoredUser(): StoredUser | null {
 export function setStoredUser(user: StoredUser | null): void {
   if (typeof window === "undefined") return;
   try {
-    if (user) window.sessionStorage.setItem(USER_KEY, JSON.stringify(user));
-    else window.sessionStorage.removeItem(USER_KEY);
+    if (user) writeStored(USER_KEY, JSON.stringify(user));
+    else writeStored(USER_KEY, null);
   } catch {
     /* storage unavailable — ignore */
   }

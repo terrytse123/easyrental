@@ -78,11 +78,10 @@ export async function getSessionUser(
   const explicit = bearerToken?.trim() || "";
   const headerToken = headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim() || "";
   const cookieToken = readCookie(request.headers.get("cookie"), "er_session");
-  const raw = explicit || headerToken || cookieToken;
-  if (raw) {
-    const stored = await findAccountUser(raw);
+  for (const token of [explicit, headerToken, cookieToken]) {
+    if (!token) continue;
+    const stored = await findAccountUser(token);
     if (stored) return stored;
-    if (explicit) return null;
   }
   try {
     const session = await auth.api.getSession({ headers });
