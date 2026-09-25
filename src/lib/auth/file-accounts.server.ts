@@ -112,10 +112,24 @@ export async function openEmailAccount(input: {
 
   const id = randomBytes(16).toString("hex");
   const display = name || email.split("@")[0] || email;
-  await sql.query(
-    `insert into app_users (id, name, email, password_hash) values ($1, $2, $3, $4)`,
-    [id, display, email, hashPassword(password)],
-  );
+  try {
+    await sql.query(
+      `insert into app_users (id, name, email, password_hash) values ($1, $2, $3, $4)`,
+      [id, display, email, hashPassword(password)],
+    );
+  } catch (error) {
+    const again = await sql.query<{ id: string; name: string; email: string; password_hash: string }>(
+      `select id, name, email, password_hash from app_users where email = $1 limit 1`,
+      [email],
+    );
+    const row = again[0];
+    if (row && checkPassword(password, row.password_hash)) {
+      const token = await startSession(sql, row.id);
+      return { ok: true, token, user: { id: row.id, name: row.name, email: row.email } };
+    }
+    if (row) return { ok: false, message: "User already exists. Use another email." };
+    throw error;
+  }
   const token = await startSession(sql, id);
   return { ok: true, token, user: { id, name: display, email } };
 }
