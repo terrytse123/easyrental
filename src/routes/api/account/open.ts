@@ -19,7 +19,7 @@ async function openAccount(request: Request) {
         /* query string is enough */
       }
     }
-    const result = openEmailAccount({ email, password, name, mode });
+    const result = await openEmailAccount({ email, password, name, mode });
     return Response.json(result, { headers: { "cache-control": "no-store" } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Account request failed";

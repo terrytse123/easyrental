@@ -1,43 +1,16 @@
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { getSql, type Sql } from "@/lib/db";
 
-type UserRow = { id: string; name: string; email: string; password: string };
-type SessionRow = { token: string; userId: string; expiresAt: number };
-type Store = { users: UserRow[]; sessions: SessionRow[] };
+type OpenResult =
+  | { ok: true; token: string; user: { id: string; name: string; email: string } }
+  | { ok: false; message: string };
 
-const globalStore = globalThis as typeof globalThis & { __emailAccounts?: Store };
+type LegacyUser = { id: string; name: string; email: string; password: string };
+type LegacySession = { token: string; userId: string; expiresAt: number };
 
-function storePath(): string {
-  const dir = process.env.VERCEL ? "/tmp" : join(process.cwd(), ".data");
-  return join(dir, "email-accounts.json");
-}
-
-function empty(): Store {
-  return { users: [], sessions: [] };
-}
-
-function load(): Store {
-  if (!globalStore.__emailAccounts) {
-    try {
-      globalStore.__emailAccounts = JSON.parse(readFileSync(storePath(), "utf8")) as Store;
-    } catch {
-      globalStore.__emailAccounts = empty();
-    }
-  }
-  return globalStore.__emailAccounts;
-}
-
-function save(store: Store): void {
-  globalStore.__emailAccounts = store;
-  try {
-    const path = storePath();
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, JSON.stringify(store));
-  } catch {
-    /* keep the in-memory copy if the disk is read-only */
-  }
-}
+const imported = globalThis as typeof globalThis & { __accountsImported?: boolean };
 
 function hashPassword(password: string): string {
   const salt = randomBytes(16).toString("hex");
@@ -54,58 +27,94 @@ function checkPassword(password: string, stored: string): boolean {
   return timingSafeEqual(next, prev);
 }
 
-export function findAccountUser(token: string | null | undefined): { id: string; email: string } | null {
-  if (!token) return null;
-  const store = load();
-  const now = Date.now();
-  const session = store.sessions.find((row) => row.token === token && row.expiresAt > now);
-  if (!session) return null;
-  const user = store.users.find((row) => row.id === session.userId);
-  return user ? { id: user.id, email: user.email } : null;
+async function importLegacyFile(sql: Sql) {
+  if (imported.__accountsImported) return;
+  imported.__accountsImported = true;
+  try {
+    const raw = readFileSync(join(process.cwd(), ".data", "email-accounts.json"), "utf8");
+    const parsed = JSON.parse(raw) as { users?: LegacyUser[]; sessions?: LegacySession[] };
+    for (const user of parsed.users ?? []) {
+      await sql.query(
+        `insert into app_users (id, name, email, password_hash)
+         values ($1, $2, $3, $4)
+         on conflict (email) do nothing`,
+        [user.id, user.name, user.email, user.password],
+      );
+    }
+    const now = Date.now();
+    for (const session of parsed.sessions ?? []) {
+      if (session.expiresAt <= now) continue;
+      await sql.query(
+        `insert into app_sessions (token, user_id, expires_at)
+         values ($1, $2, $3)
+         on conflict (token) do nothing`,
+        [session.token, session.userId, new Date(session.expiresAt).toISOString()],
+      );
+    }
+  } catch {
+    /* no preview file to import */
+  }
 }
 
-export function openEmailAccount(input: {
+export async function findAccountUser(token: string | null | undefined): Promise<{ id: string; email: string } | null> {
+  if (!token) return null;
+  const sql = await getSql();
+  await importLegacyFile(sql);
+  const rows = await sql.query<{ id: string; email: string }>(
+    `select u.id, u.email
+     from app_sessions s
+     join app_users u on u.id = s.user_id
+     where s.token = $1 and s.expires_at > now()
+     limit 1`,
+    [token],
+  );
+  return rows[0] ?? null;
+}
+
+export async function openEmailAccount(input: {
   email: string;
   password: string;
   name: string;
   mode: string;
-}): { ok: true; token: string; user: { id: string; name: string; email: string } } | { ok: false; message: string } {
+}): Promise<OpenResult> {
   const email = input.email.trim().toLowerCase();
   const password = input.password;
   const name = input.name.trim();
   if (!email.includes("@") || email.length > 120) return { ok: false, message: "Invalid email" };
   if (password.length < 8 || password.length > 200) return { ok: false, message: "Password too short" };
 
-  const store = load();
-  const existing = store.users.find((row) => row.email === email);
+  const sql = await getSql();
+  await importLegacyFile(sql);
+  const existing = await sql.query<{ id: string; name: string; email: string; password_hash: string }>(
+    `select id, name, email, password_hash from app_users where email = $1 limit 1`,
+    [email],
+  );
+  const found = existing[0];
+
   if (input.mode === "signin") {
-    if (!existing || !checkPassword(password, existing.password)) {
+    if (!found || !checkPassword(password, found.password_hash)) {
       return { ok: false, message: "Invalid email or password" };
     }
-    const token = startSession(store, existing.id);
-    save(store);
-    return { ok: true, token, user: { id: existing.id, name: existing.name, email: existing.email } };
+    const token = await startSession(sql, found.id);
+    return { ok: true, token, user: { id: found.id, name: found.name, email: found.email } };
   }
-  if (existing) return { ok: false, message: "User already exists. Use another email." };
+  if (found) return { ok: false, message: "User already exists. Use another email." };
 
-  const user: UserRow = {
-    id: randomBytes(16).toString("hex"),
-    name: name || email.split("@")[0] || email,
-    email,
-    password: hashPassword(password),
-  };
-  store.users.push(user);
-  const token = startSession(store, user.id);
-  save(store);
-  return { ok: true, token, user: { id: user.id, name: user.name, email: user.email } };
+  const id = randomBytes(16).toString("hex");
+  const display = name || email.split("@")[0] || email;
+  await sql.query(
+    `insert into app_users (id, name, email, password_hash) values ($1, $2, $3, $4)`,
+    [id, display, email, hashPassword(password)],
+  );
+  const token = await startSession(sql, id);
+  return { ok: true, token, user: { id, name: display, email } };
 }
 
-function startSession(store: Store, userId: string): string {
+async function startSession(sql: Sql, userId: string): Promise<string> {
   const token = randomBytes(24).toString("hex");
-  store.sessions.push({ token, userId, expiresAt: Date.now() + 14 * 24 * 60 * 60 * 1000 });
+  await sql.query(
+    `insert into app_sessions (token, user_id, expires_at) values ($1, $2, now() + interval '14 days')`,
+    [token, userId],
+  );
   return token;
-}
-
-export function accountsFileExists(): boolean {
-  return existsSync(storePath());
 }

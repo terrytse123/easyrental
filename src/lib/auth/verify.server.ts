@@ -67,7 +67,7 @@ export async function getSessionUser(
     headers.set("Authorization", `Bearer ${bearerToken}`);
   }
   const raw = bearerToken?.trim() || headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim() || "";
-  const stored = findAccountUser(raw);
+  const stored = await findAccountUser(raw);
   if (stored) return stored;
   try {
     const session = await auth.api.getSession({ headers });

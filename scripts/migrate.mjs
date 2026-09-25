@@ -17,9 +17,10 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import pg from "pg";
 import { pendingMigrations } from "./migration-plan.mjs";
+import { databaseUrl, poolConfig } from "./pg-config.mjs";
 
-const databaseUrl = process.env.DATABASE_URL;
-if (!databaseUrl) {
+const connectionString = databaseUrl();
+if (!connectionString) {
   console.log(
     "[migrate] DATABASE_URL not set — skipping (the PGLite fallback migrates itself).",
   );
@@ -42,7 +43,7 @@ async function main() {
     return;
   }
 
-  const pool = new pg.Pool({ connectionString: databaseUrl, max: 1 });
+  const pool = new pg.Pool(poolConfig(connectionString));
   const client = await pool.connect();
   try {
     await client.query(

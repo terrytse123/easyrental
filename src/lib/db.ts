@@ -1,20 +1,20 @@
 import { pendingMigrations } from "../../scripts/migration-plan.mjs";
+import { databaseUrl as readDatabaseUrl, poolConfig } from "../../scripts/pg-config.mjs";
 
 /** Which database backend is active. */
 export type DbSource = "neon" | "pglite";
 
 // An empty/whitespace DATABASE_URL (an easy misconfig in deploy UIs) must mean
 // "unset" — otherwise production would silently run on the PGLite fallback.
-const rawDatabaseUrl =
-  typeof process !== "undefined" ? process.env.DATABASE_URL : undefined;
-const databaseUrl =
-  rawDatabaseUrl && rawDatabaseUrl.trim() ? rawDatabaseUrl : undefined;
+// The value comes from the host environment or a server-only `.env` file
+// (Supabase or Neon connection string). It is never sent to the browser.
+const databaseUrl = readDatabaseUrl();
 
 /**
- * Active backend: real **Neon** when `DATABASE_URL` is set (deployed / configured
- * sandbox), otherwise a local embedded **PGLite** (Postgres compiled to WASM) so
- * the app has a working database even with nothing configured — the live preview
- * included. Swap in Neon later by just setting `DATABASE_URL`; no code changes.
+ * Active backend: Postgres when `DATABASE_URL` is set (Supabase, Neon, or any
+ * other Postgres), otherwise a local embedded **PGLite** so the live preview
+ * works with nothing configured. Set `DATABASE_URL` to move both the ledger
+ * and email accounts into that database. No other code changes.
  */
 export const dbSource: DbSource = databaseUrl ? "neon" : "pglite";
 
@@ -69,7 +69,6 @@ const identity = (v: string) => v;
 
 type Run = <T>(text: string, params: unknown[]) => Promise<T[]>;
 
-/** Wrap a query runner in the tagged-template + `.query()` `Sql` surface. */
 function toSql(run: Run): Sql {
   const sql = (async <T = Record<string, unknown>>(
     strings: TemplateStringsArray,
@@ -85,6 +84,35 @@ function toSql(run: Run): Sql {
   return sql;
 }
 
+/** Apply migrations/*.sql once. Same files the preview and `npm run db:migrate` use. */
+async function applyMigrations(client: { query: (text: string, params?: unknown[]) => Promise<{ rows: { name: string }[] }> }) {
+  const migrations = import.meta.glob("/migrations/*.sql", {
+    query: "?raw",
+    import: "default",
+    eager: true,
+  }) as Record<string, string>;
+  await client.query(
+    "create table if not exists _migrations (name text primary key, applied_at timestamptz not null default now())",
+  );
+  const doneRows = await client.query("select name from _migrations");
+  const done = doneRows.rows.map((row) => row.name);
+  for (const { name, path } of pendingMigrations(Object.keys(migrations), done)) {
+    await client.query("BEGIN");
+    try {
+      await client.query(migrations[path]);
+      await client.query("insert into _migrations (name) values ($1)", [name]);
+      await client.query("COMMIT");
+    } catch (err) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {
+        /* keep the original error */
+      }
+      throw err;
+    }
+  }
+}
+
 function createNeonSql(): Promise<Sql> {
   globalRef.__pgSqlPromise__ ??= (async () => {
     // Regular Postgres driver: node-postgres (`pg`) — works directly with Neon's
@@ -93,7 +121,13 @@ function createNeonSql(): Promise<Sql> {
     types.setTypeParser(OID_INT8, Number);
     types.setTypeParser(OID_DATE, identity);
     types.setTypeParser(OID_INTERVAL, identity);
-    const pool = new Pool({ connectionString: databaseUrl });
+    const pool = new Pool(poolConfig(databaseUrl));
+    const client = await pool.connect();
+    try {
+      await applyMigrations(client);
+    } finally {
+      client.release();
+    }
     return toSql(async <T>(text: string, params: unknown[]) => {
       const res = await pool.query(text, params);
       return res.rows as T[];
