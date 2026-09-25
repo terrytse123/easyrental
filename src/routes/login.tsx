@@ -1,7 +1,7 @@
 import { createFileRoute, Link, Navigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { z } from "zod";
-import { GROK_PROVIDERS, authClient, authEnabled, setBearerToken, signIn } from "@/lib/auth/client";
+import { authEnabled, setBearerToken, setStoredUser } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { t } from "@/lib/rental/i18n";
 import { useRental } from "@/lib/rental/store";
@@ -37,43 +37,52 @@ function LoginPage() {
     }
     setBusy(true);
     try {
-      const query = new URLSearchParams({
+      const payload = {
         email: email.trim(),
         password,
         name: name.trim(),
         mode: registering ? "register" : "signin",
-      });
-      const response = await fetch(`/api/account/open?${query.toString()}`, {
-        method: "GET",
+      };
+      let response = await fetch("/api/account/open", {
+        method: "POST",
         credentials: "include",
-        headers: { accept: "application/json" },
+        headers: { accept: "application/json", "content-type": "application/json" },
+        body: JSON.stringify(payload),
       });
-      const result = (await response.json()) as { ok?: boolean; token?: string | null; message?: string };
-      if (!result.ok) {
+      if (!response.ok) {
+        const query = new URLSearchParams(payload);
+        response = await fetch(`/api/account/open?${query.toString()}`, {
+          method: "GET",
+          credentials: "include",
+          headers: { accept: "application/json" },
+        });
+      }
+      const result = (await response.json()) as {
+        ok?: boolean;
+        token?: string | null;
+        message?: string;
+        user?: { id: string; name?: string; email?: string };
+      };
+      if (!result.ok || !result.token || !result.user?.id) {
         const message = result.message ?? "";
         setError(
           /exist/i.test(message)
             ? t(lang, "emailTaken")
-            : /invalid origin/i.test(message)
-              ? t(lang, "originBlocked")
-              : /short|password/i.test(message)
-                ? t(lang, "passwordShort")
-                : message || t(lang, "authFailed"),
+            : /short|password/i.test(message)
+              ? t(lang, "passwordShort")
+              : message || t(lang, "authFailed"),
         );
         setBusy(false);
         return;
       }
-      const headerToken = response.headers.get("set-auth-token");
-      const token = result.token || headerToken;
-      if (token) setBearerToken(token);
-      const session = await authClient.getSession({
-        fetchOptions: token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
+      setBearerToken(result.token);
+      setStoredUser({
+        id: result.user.id,
+        displayName: result.user.name ?? null,
+        primaryEmail: result.user.email ?? payload.email,
+        profileImageUrl: null,
+        isDevFallback: false,
       });
-      if (!session.data?.user) {
-        setError(session.error?.message || t(lang, "authFailed"));
-        setBusy(false);
-        return;
-      }
       window.location.assign("/desk");
     } catch (err) {
       setError(err instanceof Error && err.message ? err.message : t(lang, "authFailed"));
@@ -122,26 +131,6 @@ function LoginPage() {
             </button>
           </form>
         )}
-        <div className="mt-8 max-w-md">
-          <p className="text-sm text-muted">{t(lang, "orElse")}</p>
-          <div className="mt-3 flex flex-col gap-2">
-            {GROK_PROVIDERS.map((p) => (
-              <button
-                key={p.providerId}
-                type="button"
-                onClick={() => {
-                  void signIn(p.providerId, { callbackURL: "/desk" }).catch((err: unknown) => {
-                    const message = err instanceof Error ? err.message : "";
-                    setError(/pop-up|popup/i.test(message) ? t(lang, "popupBlocked") : t(lang, "socialFailed"));
-                  });
-                }}
-                className="min-h-11 rounded-full border border-line bg-card px-4 text-sm font-semibold text-ink"
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-        </div>
       </section>
     </main>
   );
