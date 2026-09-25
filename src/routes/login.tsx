@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 import { z } from "zod";
 import { authEnabled, setBearerToken, setStoredUser } from "@/lib/auth/client";
 import { t } from "@/lib/rental/i18n";
@@ -26,7 +26,7 @@ function LoginPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  async function submit(event: FormEvent) {
+  async function submit(event: { preventDefault(): void }) {
     event.preventDefault();
     setError("");
     if (!email.trim().includes("@")) {
@@ -49,19 +49,12 @@ function LoginPage() {
         name: name.trim(),
         mode: resetting ? "reset" : registering ? "register" : "signin",
       };
-      let response = await fetch("/api/account/open", {
-        method: "POST",
+      // The preview only delivers GET. A POST never reaches the database.
+      const response = await fetch(`/api/account/open?${new URLSearchParams(payload)}`, {
+        method: "GET",
         credentials: "include",
-        headers: { accept: "application/json", "content-type": "application/json" },
-        body: JSON.stringify(payload),
+        headers: { accept: "application/json" },
       });
-      if (!response.ok) {
-        response = await fetch(`/api/account/open?${new URLSearchParams(payload)}`, {
-          method: "GET",
-          credentials: "include",
-          headers: { accept: "application/json" },
-        });
-      }
       const result = (await response.json()) as {
         ok?: boolean;
         token?: string | null;
@@ -120,7 +113,13 @@ function LoginPage() {
         {!authEnabled ? (
           <p className="mt-6 text-sm text-muted">{t(lang, "authFailed")}</p>
         ) : (
-          <form onSubmit={submit} className="mt-8 max-w-md space-y-4">
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submit(event);
+            }}
+            className="mt-8 max-w-md space-y-4"
+          >
             {registering && (
               <Field label={t(lang, "displayName")} value={name} onChange={setName} autoComplete="name" />
             )}
@@ -143,8 +142,12 @@ function LoginPage() {
             )}
             {error && <p className="text-sm text-clay">{error}</p>}
             <button
-              type="submit"
+              type="button"
               disabled={busy}
+              onClick={(event) => {
+                event.preventDefault();
+                void submit(event);
+              }}
               className="min-h-11 w-full rounded-full bg-ink text-sm font-semibold text-paper disabled:opacity-60"
             >
               {resetting ? t(lang, "resetPassword") : registering ? t(lang, "register") : t(lang, "signIn")}
