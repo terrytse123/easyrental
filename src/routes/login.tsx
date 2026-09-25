@@ -21,6 +21,7 @@ function LoginPage() {
   const resetting = mode === "reset";
   const accountMode = resetting ? "reset" : registering ? "register" : "signin";
   const [status, setStatus] = useState("");
+  const [enterStamp] = useState(() => String(Date.now()));
   const timer = useRef(0);
   const attempt = useRef(0);
 
@@ -145,8 +146,13 @@ function LoginPage() {
             />
             {accountMode === "signin" && (
               <a
+                rel="external"
                 className="flex min-h-11 w-full items-center justify-center rounded-full bg-ink text-sm font-semibold text-paper"
-                href="/api/account/open"
+                href={`/api/account/open?enter=${enterStamp}`}
+                onClick={(event) => {
+                  event.preventDefault();
+                  window.location.assign(`/api/account/open?enter=${enterStamp}`);
+                }}
               >
                 用 easyrental 進入帳簿
               </a>
