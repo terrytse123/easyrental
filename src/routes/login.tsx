@@ -72,9 +72,11 @@ function LoginPage() {
         setError(
           /exist/i.test(message)
             ? t(lang, "emailTaken")
-            : /short|password/i.test(message)
-              ? t(lang, "passwordShort")
-              : message || t(lang, "authFailed"),
+            : /invalid email or password/i.test(message)
+              ? t(lang, "badCredentials")
+              : /short/i.test(message)
+                ? t(lang, "passwordShort")
+                : message || t(lang, "authFailed"),
         );
         setBusy(false);
         return;
