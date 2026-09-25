@@ -7,8 +7,9 @@
   <style>
     :root { color-scheme: light; --paper:#f4efe6; --ink:#1c2430; --muted:#6d6458; --brass:#8c6a3d; --card:#fffdf8; --line:#e4d9c8; --clay:#9c3b2e; }
     * { box-sizing: border-box; }
-    body { margin: 0; background: var(--paper); color: var(--ink); font: 16px/1.45 sans-serif; }
+    body { margin: 0; min-height: 100dvh; display: flex; flex-direction: column; background: var(--paper); color: var(--ink); font: 16px/1.45 sans-serif; }
     header, main { padding: 16px 16px 0; }
+    main { flex: 1; }
     h1 { margin: 0; font-size: 32px; font-weight: 560; }
     .sub { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
     .row { display: flex; gap: 8px; }
@@ -64,22 +65,43 @@
       return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
     }
     function hkd(n) { return "HK$" + Math.round(Number(n) || 0).toLocaleString("zh-HK"); }
-    function esc(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&","<":"<",">":">","\"":""","'":"&#39;" }[c])); }
+    function esc(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "\u0026amp;")
+        .replace(/</g, "\u0026lt;")
+        .replace(/>/g, "\u0026gt;")
+        .replace(/"/g, "\u0026quot;");
+    }
     function byId(list, id) { return list.find((x) => x.id === id); }
 
+    function storeGet() {
+      try { return localStorage.getItem(KEY) || ""; } catch (e) { return ""; }
+    }
+    function storeSet(json) {
+      try { localStorage.setItem(KEY, json); } catch (e) { /* file pages often block this */ }
+    }
     function persist() {
       const json = JSON.stringify(db);
-      localStorage.setItem(KEY, json);
-      if (window.Android && Android.saveLedger) Android.saveLedger(json);
+      storeSet(json);
+      try { if (window.Android && Android.saveLedger) Android.saveLedger(json); } catch (e) {}
+    }
+    function asList(value) { return Array.isArray(value) ? value : []; }
+    function normalize(parsed) {
+      const base = empty();
+      if (!parsed || typeof parsed !== "object") return base;
+      base.properties = asList(parsed.properties);
+      base.tenants = asList(parsed.tenants);
+      base.tenancies = asList(parsed.tenancies);
+      base.payments = asList(parsed.payments);
+      base.tickets = asList(parsed.tickets);
+      return base;
     }
     function load() {
       let json = "";
       try { if (window.Android && Android.loadLedger) json = Android.loadLedger() || ""; } catch (e) {}
-      if (!json) json = localStorage.getItem(KEY) || "";
-      try {
-        const parsed = json ? JSON.parse(json) : empty();
-        db = { ...empty(), ...parsed };
-      } catch (e) { db = empty(); }
+      if (!json) json = storeGet();
+      try { db = normalize(json ? JSON.parse(json) : null); }
+      catch (e) { db = empty(); }
     }
 
     function ensureCharge(tenancy) {
@@ -231,8 +253,10 @@
       reader.readAsText(event.target.files[0]);
     });
     document.querySelectorAll("nav button").forEach((b) => b.addEventListener("click", () => { tab = b.dataset.tab; render(); }));
-    load();
-    render();
+    try { load(); render(); }
+    catch (e) {
+      document.getElementById("app").innerHTML = "<p>本地帳簿未能開啟。請再安裝一次新版本。</p>";
+    }
   </script>
 </body>
 </html>
