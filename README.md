@@ -1,4 +1,4 @@
-# 租住易 EasyRental
+# 香港租租 EasyRentalHK
 
 A Hong Kong landlord ledger: flats, tenancies, rent collection (FPS, bank, PayMe, AlipayHK, WeChat Pay, cheque, cash), and repairs. Traditional Chinese and English. Data stays in the browser; export a JSON backup from Notes.
 

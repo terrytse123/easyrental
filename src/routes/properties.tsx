@@ -109,7 +109,7 @@ function PropertiesPage() {
               <p className="mt-3 text-sm text-muted">
                 {lang === "zh" ? district?.zh : p.district} · {lang === "zh" ? kind?.zh : kind?.en} · {p.beds}
                 {t(lang, "beds")} {p.baths}
-                {t(lang, "baths")} · {p.sqft} ft²
+                {t(lang, "baths")} · {p.sqft} {lang === "zh" ? "平方呎" : "sq ft"}
               </p>
               <p className="mt-3 font-display text-3xl text-ink">
                 <Money>{hkd(p.rent, lang)}</Money>

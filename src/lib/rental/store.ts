@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { dueDateFor, monthKey, todayISO, uid } from "./format";
+import { getLedger, saveLedger } from "./ledger.functions";
 import { SEED } from "./seed";
 import type {
   Lang,
@@ -15,11 +16,19 @@ import type {
   TicketStatus,
 } from "./types";
 
+type SaveState = "idle" | "error";
+
 type State = RentalData & {
   lang: Lang;
   hydrated: boolean;
+  loaded: boolean;
+  loadedFor: string | null;
+  loading: boolean;
+  loadError: boolean;
+  saveState: SaveState;
   setLang: (lang: Lang) => void;
   setHydrated: (v: boolean) => void;
+  loadLedger: (userId: string) => Promise<void>;
   addProperty: (p: Omit<Property, "id">) => void;
   updateProperty: (id: string, patch: Partial<Property>) => void;
   removeProperty: (id: string) => void;
@@ -37,6 +46,40 @@ type State = RentalData & {
   importData: (data: RentalData) => void;
 };
 
+const EMPTY: RentalData = {
+  properties: [],
+  tenants: [],
+  tenancies: [],
+  payments: [],
+  tickets: [],
+};
+
+function snapshot(s: State): RentalData {
+  return {
+    properties: s.properties,
+    tenants: s.tenants,
+    tenancies: s.tenancies,
+    payments: s.payments,
+    tickets: s.tickets,
+  };
+}
+
+let saveTimer: number | undefined;
+
+function queueSave() {
+  if (typeof window === "undefined") return;
+  const current = useRental.getState();
+  if (!current.loaded || !current.loadedFor) return;
+  window.clearTimeout(saveTimer);
+  saveTimer = window.setTimeout(() => {
+    const next = useRental.getState();
+    if (!next.loaded) return;
+    void saveLedger({ data: snapshot(next) })
+      .then(() => useRental.setState({ saveState: "idle" }))
+      .catch(() => useRental.setState({ saveState: "error" }));
+  }, 400);
+}
+
 function withCurrentCharge(data: RentalData, tenancy: Tenancy): Payment | null {
   const period = monthKey();
   if (data.payments.some((p) => p.tenancyId === tenancy.id && p.period === period)) return null;
@@ -53,17 +96,45 @@ function withCurrentCharge(data: RentalData, tenancy: Tenancy): Payment | null {
 export const useRental = create<State>()(
   persist(
     (set) => ({
-      ...SEED,
+      ...EMPTY,
       lang: "zh",
       hydrated: false,
+      loaded: false,
+      loadedFor: null,
+      loading: false,
+      loadError: false,
+      saveState: "idle",
       setLang: (lang) => set({ lang }),
       setHydrated: (hydrated) => set({ hydrated }),
-      addProperty: (p) => set((s) => ({ properties: [{ ...p, id: uid("p") }, ...s.properties] })),
-      updateProperty: (id, patch) =>
+      loadLedger: async (userId) => {
+        const current = useRental.getState();
+        if (current.loaded && current.loadedFor === userId) return;
+        set({ loading: true, loadError: false });
+        try {
+          const data = await getLedger();
+          set({
+            ...data,
+            loading: false,
+            loaded: true,
+            loadedFor: userId,
+            loadError: false,
+            saveState: "idle",
+          });
+        } catch {
+          set({ loading: false, loaded: false, loadedFor: null, loadError: true });
+        }
+      },
+      addProperty: (p) => {
+        set((s) => ({ properties: [{ ...p, id: uid("p") }, ...s.properties] }));
+        queueSave();
+      },
+      updateProperty: (id, patch) => {
         set((s) => ({
           properties: s.properties.map((p) => (p.id === id ? { ...p, ...patch } : p)),
-        })),
-      removeProperty: (id) =>
+        }));
+        queueSave();
+      },
+      removeProperty: (id) => {
         set((s) => {
           const tenancyIds = new Set(s.tenancies.filter((t) => t.propertyId === id).map((t) => t.id));
           return {
@@ -72,15 +143,20 @@ export const useRental = create<State>()(
             payments: s.payments.filter((p) => !tenancyIds.has(p.tenancyId)),
             tickets: s.tickets.filter((t) => t.propertyId !== id),
           };
-        }),
+        });
+        queueSave();
+      },
       addTenant: (t) => {
         const id = uid("t");
         set((s) => ({ tenants: [{ ...t, id }, ...s.tenants] }));
+        queueSave();
         return id;
       },
-      updateTenant: (id, patch) =>
-        set((s) => ({ tenants: s.tenants.map((t) => (t.id === id ? { ...t, ...patch } : t)) })),
-      removeTenant: (id) =>
+      updateTenant: (id, patch) => {
+        set((s) => ({ tenants: s.tenants.map((t) => (t.id === id ? { ...t, ...patch } : t)) }));
+        queueSave();
+      },
+      removeTenant: (id) => {
         set((s) => {
           const tenancyIds = new Set(s.tenancies.filter((t) => t.tenantId === id).map((t) => t.id));
           return {
@@ -88,8 +164,10 @@ export const useRental = create<State>()(
             tenancies: s.tenancies.filter((t) => t.tenantId !== id),
             payments: s.payments.filter((p) => !tenancyIds.has(p.tenancyId)),
           };
-        }),
-      addTenancy: (t) =>
+        });
+        queueSave();
+      },
+      addTenancy: (t) => {
         set((s) => {
           const tenancy: Tenancy = { ...t, id: uid("tn") };
           const charge = withCurrentCharge(s, tenancy);
@@ -97,17 +175,23 @@ export const useRental = create<State>()(
             tenancies: [tenancy, ...s.tenancies],
             payments: charge ? [charge, ...s.payments] : s.payments,
           };
-        }),
-      updateTenancy: (id, patch) =>
+        });
+        queueSave();
+      },
+      updateTenancy: (id, patch) => {
         set((s) => ({
           tenancies: s.tenancies.map((t) => (t.id === id ? { ...t, ...patch } : t)),
-        })),
-      removeTenancy: (id) =>
+        }));
+        queueSave();
+      },
+      removeTenancy: (id) => {
         set((s) => ({
           tenancies: s.tenancies.filter((t) => t.id !== id),
           payments: s.payments.filter((p) => p.tenancyId !== id),
-        })),
-      markPaid: (id, method, ref) =>
+        }));
+        queueSave();
+      },
+      markPaid: (id, method, ref) => {
         set((s) => ({
           payments: s.payments.map((p) =>
             p.id === id
@@ -120,37 +204,44 @@ export const useRental = create<State>()(
                 }
               : p,
           ),
-        })),
-      addTicket: (t) =>
+        }));
+        queueSave();
+      },
+      addTicket: (t) => {
         set((s) => ({
           tickets: [{ ...t, id: uid("k"), created: todayISO() }, ...s.tickets],
-        })),
-      setTicketStatus: (id, status) =>
+        }));
+        queueSave();
+      },
+      setTicketStatus: (id, status) => {
         set((s) => ({
           tickets: s.tickets.map((t) => (t.id === id ? { ...t, status } : t)),
-        })),
-      removeTicket: (id) => set((s) => ({ tickets: s.tickets.filter((t) => t.id !== id) })),
-      resetDemo: () => set({ ...SEED }),
-      importData: (data) =>
+        }));
+        queueSave();
+      },
+      removeTicket: (id) => {
+        set((s) => ({ tickets: s.tickets.filter((t) => t.id !== id) }));
+        queueSave();
+      },
+      resetDemo: () => {
+        set({ ...SEED });
+        queueSave();
+      },
+      importData: (data) => {
         set({
           properties: data.properties ?? [],
           tenants: data.tenants ?? [],
           tenancies: data.tenancies ?? [],
           payments: data.payments ?? [],
           tickets: data.tickets ?? [],
-        }),
+        });
+        queueSave();
+      },
     }),
     {
-      name: "easyrental-hk-v1",
+      name: "easyrental-lang-v1",
       skipHydration: true,
-      partialize: (s) => ({
-        lang: s.lang,
-        properties: s.properties,
-        tenants: s.tenants,
-        tenancies: s.tenancies,
-        payments: s.payments,
-        tickets: s.tickets,
-      }),
+      partialize: (s) => ({ lang: s.lang }),
     },
   ),
 );

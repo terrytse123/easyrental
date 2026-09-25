@@ -3,7 +3,7 @@ import { AuthProvider } from "@/lib/auth/provider";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
 import appCss from "../styles.css?url";
 
-const APP_NAME = "EasyRental";
+const APP_NAME = "EasyRentalHK";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -11,7 +11,7 @@ export const Route = createRootRoute({
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: APP_NAME },
-      { name: "description", content: "租住易 EasyRental — a Hong Kong landlord rent ledger." },
+      { name: "description", content: "香港租租 EasyRentalHK — Hong Kong private rent trends, and a landlord ledger after you sign in." },
       { name: "theme-color", content: "#12263A" },
     ],
     links: [

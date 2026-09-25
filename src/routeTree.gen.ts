@@ -10,15 +10,23 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as DeskRouteImport } from './routes/desk'
 import { Route as GuideRouteImport } from './routes/guide'
 import { Route as LedgerRouteImport } from './routes/ledger'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as PropertiesRouteImport } from './routes/properties'
 import { Route as RepairsRouteImport } from './routes/repairs'
 import { Route as TenanciesRouteImport } from './routes/tenancies'
+import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DeskRoute = DeskRouteImport.update({
+  id: '/desk',
+  path: '/desk',
   getParentRoute: () => rootRouteImport,
 } as any)
 const GuideRoute = GuideRouteImport.update({
@@ -29,6 +37,11 @@ const GuideRoute = GuideRouteImport.update({
 const LedgerRoute = LedgerRouteImport.update({
   id: '/ledger',
   path: '/ledger',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PropertiesRoute = PropertiesRouteImport.update({
@@ -46,55 +59,92 @@ const TenanciesRoute = TenanciesRouteImport.update({
   path: '/tenancies',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
+  id: '/api/auth/$',
+  path: '/api/auth/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/desk': typeof DeskRoute
   '/guide': typeof GuideRoute
   '/ledger': typeof LedgerRoute
+  '/login': typeof LoginRoute
   '/properties': typeof PropertiesRoute
   '/repairs': typeof RepairsRoute
   '/tenancies': typeof TenanciesRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/desk': typeof DeskRoute
   '/guide': typeof GuideRoute
   '/ledger': typeof LedgerRoute
+  '/login': typeof LoginRoute
   '/properties': typeof PropertiesRoute
   '/repairs': typeof RepairsRoute
   '/tenancies': typeof TenanciesRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/desk': typeof DeskRoute
   '/guide': typeof GuideRoute
   '/ledger': typeof LedgerRoute
+  '/login': typeof LoginRoute
   '/properties': typeof PropertiesRoute
   '/repairs': typeof RepairsRoute
   '/tenancies': typeof TenanciesRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/guide' | '/ledger' | '/properties' | '/repairs' | '/tenancies'
-  fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/guide' | '/ledger' | '/properties' | '/repairs' | '/tenancies'
-  id:
-    | '__root__'
     | '/'
+    | '/desk'
     | '/guide'
     | '/ledger'
+    | '/login'
     | '/properties'
     | '/repairs'
     | '/tenancies'
+    | '/api/auth/$'
+  fileRoutesByTo: FileRoutesByTo
+  to:
+    | '/'
+    | '/desk'
+    | '/guide'
+    | '/ledger'
+    | '/login'
+    | '/properties'
+    | '/repairs'
+    | '/tenancies'
+    | '/api/auth/$'
+  id:
+    | '__root__'
+    | '/'
+    | '/desk'
+    | '/guide'
+    | '/ledger'
+    | '/login'
+    | '/properties'
+    | '/repairs'
+    | '/tenancies'
+    | '/api/auth/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  DeskRoute: typeof DeskRoute
   GuideRoute: typeof GuideRoute
   LedgerRoute: typeof LedgerRoute
+  LoginRoute: typeof LoginRoute
   PropertiesRoute: typeof PropertiesRoute
   RepairsRoute: typeof RepairsRoute
   TenanciesRoute: typeof TenanciesRoute
+  ApiAuthSplatRoute: typeof ApiAuthSplatRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -104,6 +154,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/desk': {
+      id: '/desk'
+      path: '/desk'
+      fullPath: '/desk'
+      preLoaderRoute: typeof DeskRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/guide': {
@@ -118,6 +175,13 @@ declare module '@tanstack/react-router' {
       path: '/ledger'
       fullPath: '/ledger'
       preLoaderRoute: typeof LedgerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/properties': {
@@ -141,16 +205,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TenanciesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/auth/$': {
+      id: '/api/auth/$'
+      path: '/api/auth/$'
+      fullPath: '/api/auth/$'
+      preLoaderRoute: typeof ApiAuthSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  DeskRoute: DeskRoute,
   GuideRoute: GuideRoute,
   LedgerRoute: LedgerRoute,
+  LoginRoute: LoginRoute,
   PropertiesRoute: PropertiesRoute,
   RepairsRoute: RepairsRoute,
   TenanciesRoute: TenanciesRoute,
+  ApiAuthSplatRoute: ApiAuthSplatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
