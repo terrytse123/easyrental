@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { z } from "zod";
 import { authEnabled, setBearerToken, setStoredUser } from "@/lib/auth/client";
 import { t } from "@/lib/rental/i18n";
@@ -20,11 +20,18 @@ function LoginPage() {
   const registering = mode === "register";
   const resetting = mode === "reset";
   const accountMode = resetting ? "reset" : registering ? "register" : "signin";
-  const [status, setStatus] = useState("輸入電郵和密碼，會自動儲存。");
+  const [status, setStatus] = useState("");
   const timer = useRef(0);
   const busy = useRef(false);
 
+  useEffect(() => {
+    window.clearTimeout(timer.current);
+    busy.current = false;
+    setStatus(accountMode === "signin" ? "按登入。密碼是建立戶口時設定的那一組。" : "");
+  }, [accountMode]);
+
   function schedule(event: FormEvent<HTMLFormElement>) {
+    if (accountMode === "signin") return;
     const form = event.currentTarget;
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => {
@@ -39,18 +46,25 @@ function LoginPage() {
     const password = String(data.get("password") ?? "");
     const confirm = String(data.get("confirm") ?? "");
     const name = String(data.get("name") ?? "").trim();
+    const modeSent = String(data.get("mode") || accountMode);
     if (!email.includes("@") || password.length < 8) {
       setStatus("請輸入電郵，密碼至少 8 個字。");
       return;
     }
-    if ((registering || resetting) && confirm !== password) {
+    if (modeSent !== "signin" && confirm !== password) {
       setStatus(confirm ? "兩次密碼不相同。" : "請再輸入一次密碼。");
       return;
     }
     busy.current = true;
-    setStatus("正在儲存到資料庫…");
+    setStatus(modeSent === "signin" ? "正在登入…" : "正在儲存到資料庫…");
     try {
-      const params = new URLSearchParams({ email, password, name, confirm: confirm || password, mode: accountMode });
+      const params = new URLSearchParams({
+        email,
+        password,
+        name,
+        confirm: confirm || password,
+        mode: modeSent,
+      });
       const response = await fetch(`/api/account/open?${params.toString()}`, { headers: { accept: "application/json" } });
       const result = (await response.json()) as {
         ok?: boolean;
@@ -110,11 +124,13 @@ function LoginPage() {
         ) : (
           <form
             id="account-form"
-            method="get"
-            action="/api/account/open"
             noValidate
             className="mt-8 max-w-md space-y-4"
             onInput={schedule}
+            onSubmit={(event) => {
+              event.preventDefault();
+              void save(event.currentTarget);
+            }}
           >
             <input type="hidden" name="page" value="1" />
             <input type="hidden" name="mode" value={accountMode} />
