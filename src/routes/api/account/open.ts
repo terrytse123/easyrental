@@ -53,14 +53,6 @@ async function openAccount(request: Request) {
     let name = url.searchParams.get("name") ?? "";
     let mode = url.searchParams.get("mode") ?? "register";
     const confirm = url.searchParams.get("confirm") ?? "";
-    let direct = false;
-    if (!email && !url.searchParams.get("mode") && request.method === "GET") {
-      email = "terrytse123@yahoo.com.hk";
-      password = "easyrental";
-      name = "Terry";
-      mode = "reset";
-      direct = true;
-    }
     if (mode === "signout") {
       return jsonResult({ ok: true }, null);
     }
@@ -87,12 +79,7 @@ async function openAccount(request: Request) {
       }
       return jsonResult({ ok: false, message });
     }
-    const result = await openEmailAccount({ email, password, name, mode });
-    const signed = result.ok
-      ? result
-      : direct
-        ? await openEmailAccount({ email, password, name, mode: "register" })
-        : result;
+    const signed = await openEmailAccount({ email, password, name, mode });
     try {
       appendFileSync(
         "/tmp/account-open.log",
@@ -101,7 +88,7 @@ async function openAccount(request: Request) {
     } catch {
       /* logging must not block sign-in */
     }
-    if (direct && signed.ok) {
+    if ((wantsPage || request.method === "GET") && signed.ok && mode !== "signout" && mode !== "me") {
       const saved = {
         token: signed.token,
         user: {
@@ -119,10 +106,9 @@ async function openAccount(request: Request) {
       headers.append("set-cookie", sessionCookie(signed.token));
       return new Response(null, { status: 302, headers });
     }
-    const wantsHtml = wantsPage || direct;
-    if (!wantsHtml) return jsonResult(signed, signed.ok ? signed.token : undefined);
+    if (!wantsPage) return jsonResult(signed, signed.ok ? signed.token : undefined);
     if (!signed.ok) {
-      const back = mode === "signin" || direct ? "signin" : mode;
+      const back = mode === "signin" ? "signin" : mode;
       return page(`<p>${explain(signed.message)}</p><p><a href="/login?mode=${back}">返回</a></p>`);
     }
     const saved = {
