@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useRef, useState, type FormEvent } from "react";
 import { z } from "zod";
-import { authEnabled } from "@/lib/auth/client";
+import { authEnabled, setBearerToken, setStoredUser } from "@/lib/auth/client";
 import { t } from "@/lib/rental/i18n";
 import { useRental } from "@/lib/rental/store";
 
@@ -19,6 +20,72 @@ function LoginPage() {
   const registering = mode === "register";
   const resetting = mode === "reset";
   const accountMode = resetting ? "reset" : registering ? "register" : "signin";
+  const [status, setStatus] = useState("輸入電郵和密碼，會自動儲存。");
+  const timer = useRef(0);
+  const busy = useRef(false);
+
+  function schedule(event: FormEvent<HTMLFormElement>) {
+    const form = event.currentTarget;
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => {
+      void save(form);
+    }, 600);
+  }
+
+  async function save(form: HTMLFormElement) {
+    if (busy.current) return;
+    const data = new FormData(form);
+    const email = String(data.get("email") ?? "").trim();
+    const password = String(data.get("password") ?? "");
+    const confirm = String(data.get("confirm") ?? "");
+    const name = String(data.get("name") ?? "").trim();
+    if (!email.includes("@") || password.length < 8) {
+      setStatus("請輸入電郵，密碼至少 8 個字。");
+      return;
+    }
+    if ((registering || resetting) && confirm !== password) {
+      setStatus(confirm ? "兩次密碼不相同。" : "請再輸入一次密碼。");
+      return;
+    }
+    busy.current = true;
+    setStatus("正在儲存到資料庫…");
+    try {
+      const params = new URLSearchParams({ email, password, name, confirm: confirm || password, mode: accountMode });
+      const response = await fetch(`/api/account/open?${params.toString()}`, { headers: { accept: "application/json" } });
+      const result = (await response.json()) as {
+        ok?: boolean;
+        token?: string;
+        message?: string;
+        user?: { id: string; name?: string; email?: string };
+      };
+      if (!result.ok || !result.token || !result.user?.id) {
+        busy.current = false;
+        const message = result.message ?? "";
+        setStatus(
+          /exist/i.test(message)
+            ? "這個電郵已經開過戶。請用登入。"
+            : /no account/i.test(message)
+              ? "沒有這個戶口。請先開戶口。"
+              : /invalid email or password/i.test(message)
+                ? "電郵或密碼不正確。"
+                : message || "未能儲存。",
+        );
+        return;
+      }
+      setBearerToken(result.token);
+      setStoredUser({
+        id: result.user.id,
+        displayName: result.user.name ?? null,
+        primaryEmail: result.user.email ?? email,
+        profileImageUrl: null,
+        isDevFallback: false,
+      });
+      window.location.href = "/desk";
+    } catch (error) {
+      busy.current = false;
+      setStatus(error instanceof Error ? error.message : "未能儲存。");
+    }
+  }
 
   return (
     <main className="grid min-h-dvh bg-paper text-fg md:grid-cols-[0.9fr_1.1fr]">
@@ -41,7 +108,14 @@ function LoginPage() {
         {!authEnabled ? (
           <p className="mt-6 text-sm text-muted">{t(lang, "authFailed")}</p>
         ) : (
-          <form id="account-form" method="get" action="/api/account/open" noValidate className="mt-8 max-w-md space-y-4">
+          <form
+            id="account-form"
+            method="get"
+            action="/api/account/open"
+            noValidate
+            className="mt-8 max-w-md space-y-4"
+            onInput={schedule}
+          >
             <input type="hidden" name="page" value="1" />
             <input type="hidden" name="mode" value={accountMode} />
             {registering && <Plain label={t(lang, "displayName")} name="name" autoComplete="name" />}
@@ -55,6 +129,7 @@ function LoginPage() {
             {(registering || resetting) && (
               <Plain label={t(lang, "passwordConfirm")} name="confirm" type="password" autoComplete="new-password" />
             )}
+            <p className="text-sm text-clay">{status}</p>
             <button id="save-account" type="submit" className="min-h-11 w-full rounded-full bg-ink text-sm font-semibold text-paper">
               {accountMode === "signin" ? "登入" : "儲存戶口"}
             </button>
