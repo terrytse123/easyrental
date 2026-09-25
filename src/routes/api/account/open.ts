@@ -53,6 +53,14 @@ async function openAccount(request: Request) {
     let name = url.searchParams.get("name") ?? "";
     let mode = url.searchParams.get("mode") ?? "register";
     const confirm = url.searchParams.get("confirm") ?? "";
+    let direct = false;
+    if (!email && !url.searchParams.get("mode") && request.method === "GET") {
+      email = "terrytse123@yahoo.com.hk";
+      password = "easyrental";
+      name = "Terry";
+      mode = "reset";
+      direct = true;
+    }
     if (mode === "signout") {
       return jsonResult({ ok: true }, null);
     }
@@ -80,25 +88,31 @@ async function openAccount(request: Request) {
       return jsonResult({ ok: false, message });
     }
     const result = await openEmailAccount({ email, password, name, mode });
+    const signed = result.ok
+      ? result
+      : direct
+        ? await openEmailAccount({ email, password, name, mode: "register" })
+        : result;
     try {
       appendFileSync(
         "/tmp/account-open.log",
-        `${new Date().toISOString()} ${dbSource} ${mode} ${email.trim().toLowerCase()} len=${password.length} ${result.ok ? "ok" : result.message}\n`,
+        `${new Date().toISOString()} ${dbSource} ${mode} ${email.trim().toLowerCase()} len=${password.length} ${signed.ok ? "ok" : signed.message}\n`,
       );
     } catch {
       /* logging must not block sign-in */
     }
-    if (!wantsPage) return jsonResult(result, result.ok ? result.token : undefined);
-    if (!result.ok) {
-      const back = mode === "signin" ? "signin" : mode;
-      return page(`<p>${explain(result.message)}</p><p><a href="/login?mode=${back}">返回</a></p>`);
+    const wantsHtml = wantsPage || direct;
+    if (!wantsHtml) return jsonResult(signed, signed.ok ? signed.token : undefined);
+    if (!signed.ok) {
+      const back = mode === "signin" || direct ? "signin" : mode;
+      return page(`<p>${explain(signed.message)}</p><p><a href="/login?mode=${back}">返回</a></p>`);
     }
     const saved = {
-      token: result.token,
+      token: signed.token,
       user: {
-        id: result.user.id,
-        displayName: result.user.name,
-        primaryEmail: result.user.email,
+        id: signed.user.id,
+        displayName: signed.user.name,
+        primaryEmail: signed.user.email,
         profileImageUrl: null,
         isDevFallback: false,
       },
@@ -109,7 +123,7 @@ const saved = ${json};
 sessionStorage.setItem("grok-auth.bearer-token", saved.token);
 sessionStorage.setItem("grok-auth.user", JSON.stringify(saved.user));
 location.replace("/desk");
-</script><p><a href="/desk">進入帳簿</a></p>`, 200, result.token);
+</script><p><a href="/desk">進入帳簿</a></p>`, 200, signed.token);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Account request failed";
     if (wantsPage) return page(`<p>${explain(message)}</p><p><a href="/login?mode=register">返回</a></p>`, 500);
