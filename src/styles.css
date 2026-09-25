@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Noto Sans TC", "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Fraunces", "Noto Serif TC", ui-serif, serif;
+  --color-ink: #12263a;
+  --color-ink-soft: #1b3550;
+  --color-paper: #f6f1e8;
+  --color-card: #fffdf8;
+  --color-line: #e3d7c6;
+  --color-brass: #9a7340;
+  --color-brass-soft: #f3ead8;
+  --color-jade: #1f6b4a;
+  --color-jade-soft: #e5f2eb;
+  --color-clay: #a33b32;
+  --color-clay-soft: #f8e8e6;
+  --color-muted: #6e6458;
+  --color-fg: #1c1915;
+  --radius-card: 1.15rem;
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    background: var(--color-paper);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
+}
+
+@utility ledger-rule {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent,
+    transparent 27px,
+    color-mix(in srgb, var(--color-line) 70%, transparent) 28px
+  );
+}
