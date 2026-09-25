@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>香港租租</title>
+  <style>
+    :root { color-scheme: light; --paper:#f4efe6; --ink:#1c2430; --muted:#6d6458; --brass:#8c6a3d; --card:#fffdf8; --line:#e4d9c8; --clay:#9c3b2e; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--paper); color: var(--ink); font: 16px/1.45 sans-serif; }
+    header, main { padding: 16px 16px 0; }
+    h1 { margin: 0; font-size: 32px; font-weight: 560; }
+    .sub { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+    .row { display: flex; gap: 8px; }
+    .card, .stat { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 12px; }
+    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0; }
+    .stat b { display: block; font-size: 20px; }
+    .stat span, label { color: var(--muted); font-size: 13px; }
+    button, .ghost { min-height: 44px; border-radius: 999px; border: 0; padding: 0 16px; font-weight: 650; }
+    button.primary, button { background: var(--ink); color: var(--paper); }
+    button.ghost, .ghost { background: transparent; color: var(--brass); border: 1px solid var(--line); }
+    button.danger { background: transparent; color: var(--clay); }
+    form { display: grid; gap: 8px; margin: 12px 0 18px; }
+    input, select, textarea { width: 100%; min-height: 44px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); color: var(--ink); padding: 8px 12px; font: inherit; }
+    textarea { min-height: 72px; }
+    .item { display: flex; justify-content: space-between; gap: 8px; align-items: center; margin-top: 8px; }
+    .item p { margin: 2px 0; }
+    .over { color: var(--clay); }
+    .ok { color: #2f6b45; }
+    nav { position: sticky; bottom: 0; display: grid; grid-template-columns: repeat(5, 1fr); background: var(--card); border-top: 1px solid var(--line); }
+    nav button { border-radius: 0; background: transparent; color: var(--muted); min-height: 58px; font-size: 12px; }
+    nav button.on { color: var(--brass); }
+    .hide { display: none; }
+    .tools { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 16px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>香港租租</h1>
+    <p class="sub">本地帳簿 · 只存在這部手機 · 不用上網</p>
+  </header>
+  <main id="app"></main>
+  <nav>
+    <button type="button" data-tab="home">總覽</button>
+    <button type="button" data-tab="homes">物業</button>
+    <button type="button" data-tab="leases">租約</button>
+    <button type="button" data-tab="pay">收款</button>
+    <button type="button" data-tab="fix">維修</button>
+  </nav>
+  <script>
+    const KEY = "easyrental-local-ledger";
+    const DISTRICTS = ["中西區","灣仔","東區","南區","油尖旺","深水埗","九龍城","黃大仙","觀塘","荃灣","屯門","元朗","北區","大埔","沙田","西貢","葵青","離島"];
+    const METHODS = [["fps","轉數快"],["bank","銀行轉帳"],["payme","PayMe"],["cash","現金"],["cheque","支票"]];
+    const empty = () => ({ properties: [], tenants: [], tenancies: [], payments: [], tickets: [] });
+    let db = empty();
+    let tab = "home";
+
+    function uid(prefix) { return prefix + "-" + Math.random().toString(36).slice(2, 10); }
+    function monthKey(d = new Date()) {
+      return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+    }
+    function today() {
+      const d = new Date();
+      return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+    }
+    function hkd(n) { return "HK$" + Math.round(Number(n) || 0).toLocaleString("zh-HK"); }
+    function esc(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&","<":"<",">":">","\"":""","'":"&#39;" }[c])); }
+    function byId(list, id) { return list.find((x) => x.id === id); }
+
+    function persist() {
+      const json = JSON.stringify(db);
+      localStorage.setItem(KEY, json);
+      if (window.Android && Android.saveLedger) Android.saveLedger(json);
+    }
+    function load() {
+      let json = "";
+      try { if (window.Android && Android.loadLedger) json = Android.loadLedger() || ""; } catch (e) {}
+      if (!json) json = localStorage.getItem(KEY) || "";
+      try {
+        const parsed = json ? JSON.parse(json) : empty();
+        db = { ...empty(), ...parsed };
+      } catch (e) { db = empty(); }
+    }
+
+    function ensureCharge(tenancy) {
+      const period = monthKey();
+      if (db.payments.some((p) => p.tenancyId === tenancy.id && p.period === period)) return;
+      const due = period + "-" + String(tenancy.dueDay || 1).padStart(2, "0");
+      db.payments.unshift({ id: uid("pay"), tenancyId: tenancy.id, period, amount: tenancy.rent, paidAmount: 0, dueDate: due });
+    }
+
+    function render() {
+      document.querySelectorAll("nav button").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
+      const app = document.getElementById("app");
+      app.innerHTML = views[tab]();
+      app.querySelectorAll("[data-action]").forEach((el) => el.addEventListener("click", onAction));
+      app.querySelectorAll("form").forEach((form) => form.addEventListener("submit", onSubmit));
+    }
+
+    const views = {
+      home() {
+        const period = monthKey();
+        const due = db.payments.filter((p) => p.period === period);
+        const billed = due.reduce((s, p) => s + p.amount, 0);
+        const got = due.reduce((s, p) => s + Math.min(p.paidAmount, p.amount), 0);
+        const rows = db.payments.filter((p) => p.paidAmount < p.amount).slice(0, 8).map((p) => {
+          const lease = byId(db.tenancies, p.tenancyId);
+          const home = lease && byId(db.properties, lease.propertyId);
+          const who = lease && byId(db.tenants, lease.tenantId);
+          const late = p.dueDate < today();
+          return `<div class="item card"><div><p>${esc(home ? home.name : "單位")}</p><p class="${late ? "over" : ""}">${esc(who ? who.name : "")} · 到期 ${esc(p.dueDate)}</p></div><b>${hkd(p.amount - p.paidAmount)}</b></div>`;
+        }).join("") || `<p class="sub">未有待收租金。</p>`;
+        return `<div class="stats"><div class="stat"><span>本月應收</span><b>${hkd(billed)}</b></div><div class="stat"><span>已收</span><b>${hkd(got)}</b></div><div class="stat"><span>未收</span><b>${hkd(billed - got)}</b></div><div class="stat"><span>租約</span><b>${db.tenancies.filter((t) => t.active).length}</b></div></div>${rows}<div class="tools"><button type="button" class="ghost" data-action="online">改用網上戶口</button><button type="button" class="ghost" data-action="export">匯出存檔</button><label class="ghost" style="display:inline-flex;align-items:center">匯入存檔<input id="import-file" type="file" accept="application/json,.json" hidden></label></div>`;
+      },
+      homes() {
+        const list = db.properties.map((p) => `<div class="item card"><div><p>${esc(p.name)}</p><p class="sub">${esc(p.district)} · ${esc(p.sqft || 0)} 平方呎</p></div><button type="button" class="danger" data-action="del-home" data-id="${p.id}">刪除</button></div>`).join("") || `<p class="sub">尚未有物業。</p>`;
+        return `<form data-kind="home"><label>屋苑或單位<input name="name" required></label><label>地區<select name="district">${DISTRICTS.map((d) => `<option>${d}</option>`).join("")}</select></label><label>地址<input name="address"></label><label>實用面積（平方呎）<input name="sqft" inputmode="numeric"></label><button class="primary" type="submit">新增物業</button></form>${list}`;
+      },
+      leases() {
+        if (!db.properties.length) return `<p>請先新增物業。</p>`;
+        const opts = db.properties.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("");
+        const list = db.tenancies.map((t) => {
+          const home = byId(db.properties, t.propertyId);
+          const who = byId(db.tenants, t.tenantId);
+          return `<div class="item card"><div><p>${esc(who ? who.name : "租客")} · ${hkd(t.rent)}</p><p class="sub">${esc(home ? home.name : "")} · ${esc(t.start)} 至 ${esc(t.end)}</p></div><button type="button" class="danger" data-action="del-lease" data-id="${t.id}">結束</button></div>`;
+        }).join("") || `<p class="sub">尚未有租約。</p>`;
+        return `<form data-kind="lease"><label>物業<select name="propertyId">${opts}</select></label><label>租客姓名<input name="tenant" required></label><label>電話<input name="phone"></label><label>月租（HK$）<input name="rent" inputmode="numeric" required></label><label>開始<input name="start" type="date" required></label><label>結束<input name="end" type="date" required></label><label>每月交租日<input name="dueDay" inputmode="numeric" value="1"></label><button class="primary" type="submit">新增租約</button></form>${list}`;
+      },
+      pay() {
+        const list = db.payments.map((p) => {
+          const lease = byId(db.tenancies, p.tenancyId);
+          const home = lease && byId(db.properties, lease.propertyId);
+          const who = lease && byId(db.tenants, lease.tenantId);
+          const paid = p.paidAmount >= p.amount;
+          return `<div class="card item"><div><p>${esc(home ? home.name : "")} · ${esc(p.period)}</p><p class="${paid ? "ok" : "over"}">${esc(who ? who.name : "")} · ${paid ? "已收" : "未收"} ${hkd(p.amount)}</p></div>${paid ? "" : `<button type="button" data-action="paid" data-id="${p.id}">記一筆已收</button>`}</div>`;
+        }).join("") || `<p class="sub">未有收款。新增租約後會生成本月租金。</p>`;
+        return `<button type="button" class="ghost" data-action="charges">生成本月未開的租金</button>${list}<form id="pay-form" class="hide" data-kind="paid"><input type="hidden" name="id"><label>方式<select name="method">${METHODS.map(([v, label]) => `<option value="${v}">${label}</option>`).join("")}</select></label><label>參考編號<input name="ref"></label><button class="primary" type="submit">儲存</button></form>`;
+      },
+      fix() {
+        if (!db.properties.length) return `<p>請先新增物業。</p>`;
+        const opts = db.properties.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("");
+        const list = db.tickets.map((t) => `<div class="item card"><div><p>${esc(t.title)}</p><p class="sub">${esc((byId(db.properties, t.propertyId) || {}).name || "")} · ${t.status === "done" ? "完成" : "未完成"} · ${hkd(t.cost || 0)}</p></div><button type="button" data-action="ticket" data-id="${t.id}">${t.status === "done" ? "重開" : "完成"}</button></div>`).join("") || `<p class="sub">未有維修。</p>`;
+        return `<form data-kind="fix"><label>物業<select name="propertyId">${opts}</select></label><label>事項<input name="title" required></label><label>費用（HK$）<input name="cost" inputmode="numeric"></label><button class="primary" type="submit">新增維修</button></form>${list}`;
+      }
+    };
+
+    function onSubmit(event) {
+      event.preventDefault();
+      const data = Object.fromEntries(new FormData(event.currentTarget).entries());
+      const kind = event.currentTarget.dataset.kind;
+      if (kind === "home") {
+        db.properties.unshift({ id: uid("p"), name: data.name.trim(), address: data.address.trim(), district: data.district, type: "private", beds: 0, baths: 0, sqft: Number(data.sqft) || 0, rent: 0, managementFee: 0, rates: 0, notes: "" });
+      }
+      if (kind === "lease") {
+        const tenantId = uid("t");
+        db.tenants.unshift({ id: tenantId, name: data.tenant.trim(), phone: data.phone.trim(), email: "", notes: "" });
+        const tenancy = { id: uid("tn"), propertyId: data.propertyId, tenantId, start: data.start, end: data.end, rent: Number(data.rent) || 0, deposit: (Number(data.rent) || 0) * 2, dueDay: Math.min(28, Math.max(1, Number(data.dueDay) || 1)), stamped: false, active: true };
+        db.tenancies.unshift(tenancy);
+        ensureCharge(tenancy);
+      }
+      if (kind === "paid") {
+        const payment = byId(db.payments, data.id);
+        if (payment) { payment.paidAmount = payment.amount; payment.paidDate = today(); payment.method = data.method; payment.ref = data.ref.trim(); }
+      }
+      if (kind === "fix") {
+        db.tickets.unshift({ id: uid("tk"), propertyId: data.propertyId, title: data.title.trim(), detail: "", status: "open", priority: "med", created: today(), cost: Number(data.cost) || 0 });
+      }
+      persist();
+      render();
+    }
+
+    function onAction(event) {
+      const el = event.currentTarget;
+      const id = el.dataset.id;
+      if (el.dataset.action === "del-home" && confirm("刪除這個物業和相關租約？")) {
+        const leaseIds = new Set(db.tenancies.filter((t) => t.propertyId === id).map((t) => t.id));
+        db.properties = db.properties.filter((p) => p.id !== id);
+        db.tenancies = db.tenancies.filter((t) => t.propertyId !== id);
+        db.payments = db.payments.filter((p) => !leaseIds.has(p.tenancyId));
+        db.tickets = db.tickets.filter((t) => t.propertyId !== id);
+        persist();
+      }
+      if (el.dataset.action === "del-lease" && confirm("結束這份租約？")) {
+        db.tenancies = db.tenancies.filter((t) => t.id !== id);
+        db.payments = db.payments.filter((p) => p.tenancyId !== id);
+        persist();
+      }
+      if (el.dataset.action === "paid") {
+        const form = document.getElementById("pay-form");
+        form.classList.remove("hide");
+        form.elements.id.value = id;
+        form.scrollIntoView({ behavior: "smooth" });
+        return;
+      }
+      if (el.dataset.action === "charges") {
+        db.tenancies.filter((t) => t.active).forEach(ensureCharge);
+        persist();
+      }
+      if (el.dataset.action === "ticket") {
+        const ticket = byId(db.tickets, id);
+        if (ticket) ticket.status = ticket.status === "done" ? "open" : "done";
+        persist();
+      }
+      if (el.dataset.action === "online" && window.Android) Android.openOnline();
+      if (el.dataset.action === "export") {
+        const json = JSON.stringify(db, null, 2);
+        if (window.Android && Android.shareLedger) Android.shareLedger(json);
+        else {
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+          a.download = "easyrental-ledger.json";
+          a.click();
+        }
+        return;
+      }
+      render();
+    }
+
+    document.getElementById("app").addEventListener("change", (event) => {
+      if (event.target.id !== "import-file" || !event.target.files[0]) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const parsed = JSON.parse(String(reader.result));
+          if (!Array.isArray(parsed.properties)) throw new Error("bad");
+          db = { ...empty(), ...parsed };
+          persist();
+          render();
+        } catch (e) { alert("這個檔案不是香港租租的帳簿。"); }
+      };
+      reader.readAsText(event.target.files[0]);
+    });
+    document.querySelectorAll("nav button").forEach((b) => b.addEventListener("click", () => { tab = b.dataset.tab; render(); }));
+    load();
+    render();
+  </script>
+</body>
+</html>
