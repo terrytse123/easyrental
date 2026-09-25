@@ -51,7 +51,13 @@ function LoginPage() {
           });
       if (result.error) {
         const message = result.error.message ?? "";
-        setError(/exist/i.test(message) ? t(lang, "emailTaken") : message || t(lang, "authFailed"));
+        setError(
+          /exist/i.test(message)
+            ? t(lang, "emailTaken")
+            : /invalid origin/i.test(message)
+              ? t(lang, "originBlocked")
+              : message || t(lang, "authFailed"),
+        );
         setBusy(false);
         return;
       }
@@ -111,7 +117,12 @@ function LoginPage() {
               <button
                 key={p.providerId}
                 type="button"
-                onClick={() => void signIn(p.providerId, { callbackURL: "/desk" })}
+                onClick={() => {
+                  void signIn(p.providerId, { callbackURL: "/desk" }).catch((err: unknown) => {
+                    const message = err instanceof Error ? err.message : "";
+                    setError(/pop-up|popup/i.test(message) ? t(lang, "popupBlocked") : t(lang, "socialFailed"));
+                  });
+                }}
                 className="min-h-11 rounded-full border border-line bg-card px-4 text-sm font-semibold text-ink"
               >
                 {p.label}

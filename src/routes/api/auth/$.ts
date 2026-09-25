@@ -37,7 +37,52 @@ async function acceptPreviewShell(request: Request): Promise<Request> {
   });
 }
 
+function hostOf(value: string | null): string {
+  return (value ?? "").split(",")[0]?.trim().toLowerCase() ?? "";
+}
+
+function originOf(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
+/** Trust this browser's own page, whatever host the preview is using. */
+function trustThisRequest(request: Request): string | null {
+  const origin = originOf(request.headers.get("origin")) ?? originOf(request.headers.get("referer"));
+  if (!origin) return null;
+  const originHost = new URL(origin).host.toLowerCase();
+  const forwarded = hostOf(request.headers.get("x-forwarded-host"));
+  const host = hostOf(request.headers.get("host"));
+  const site = request.headers.get("sec-fetch-site");
+  const samePage =
+    (forwarded !== "" && originHost === forwarded) ||
+    (host !== "" && originHost === host) ||
+    site === "same-origin" ||
+    site === "none" ||
+    previewShellOrigin(origin);
+  return samePage ? origin : null;
+}
+
+function allowOrigin(origin: string) {
+  const key = "BETTER_AUTH_TRUSTED_ORIGINS";
+  const parts = (process.env[key] ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (parts.includes(origin)) return;
+  parts.push(origin);
+  process.env[key] = parts.join(",");
+}
+
 async function handle(request: Request) {
+  const trusted = trustThisRequest(request);
+  if (trusted) allowOrigin(trusted);
   return auth.handler(await acceptPreviewShell(request));
 }
 

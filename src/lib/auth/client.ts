@@ -83,10 +83,16 @@ export function rememberAuthToken(response: Response | undefined): void {
  * popup there and a normal redirect everywhere else.
  */
 function inLivePreview(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    window.location.hostname.endsWith(".grok-sandbox.com")
-  );
+  if (typeof window === "undefined") return false;
+  const host = window.location.hostname;
+  if (host === "grok-sandbox.com" || host.endsWith(".grok-sandbox.com")) return true;
+  // The chat preview is often an iframe on another Grok host. A full-page
+  // redirect to Google/X is blocked there; the popup path still works.
+  try {
+    return window.self !== window.top;
+  } catch {
+    return true;
+  }
 }
 
 /** Message the popup posts back to the opener once sign-in completes. */
