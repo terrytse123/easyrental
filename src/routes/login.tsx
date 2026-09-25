@@ -29,6 +29,10 @@ function LoginPage() {
   async function submit(event: FormEvent) {
     event.preventDefault();
     setError("");
+    if (!email.trim().includes("@")) {
+      setError(t(lang, "needEmail"));
+      return;
+    }
     if (password.length < 8) {
       setError(t(lang, "passwordShort"));
       return;
@@ -176,7 +180,6 @@ function Field({
     <label className="block text-sm text-muted">
       {label}
       <input
-        required={type !== "text" || label.length > 0}
         type={type}
         value={value}
         autoComplete={autoComplete}
