@@ -112,8 +112,10 @@ const zh = {
   perSqm: "每平方呎月租",
   regionNote: "差估署只公布港島、九龍、新界，沒有 18 區細數。所選地區用所屬分區的平均。",
   sourceNote:
-    "來源：差餉物業估價署《香港物業報告 — 每月補編》2026 年 6 月，表 1.1 及 1.3。標明臨時的數字仍可能修訂。這是分區平均，不是個別屋苑叫價，亦不是估值。",
+    "租金指數每日向差餉物業估價署核對並更新。平均租金仍用 2026 年 4 月的分區數字。標明臨時的數字仍可能修訂。這不是個別屋苑叫價，亦不是估值。",
   trendTitle: "租金指數走勢",
+  indexSchedule: "每日自動向差估署更新",
+  indexFallback: "差估署暫時連不上，先顯示上次的數字。",
   compareTitle: "同一面積類別，三區比較",
   openAccount: "開戶口，開始記租",
   haveAccount: "已有戶口？登入",
@@ -246,8 +248,10 @@ const en: Record<keyof typeof zh, string> = {
   perSqm: "Per sq ft per month",
   regionNote: "The Rating and Valuation Department publishes Hong Kong, Kowloon and the New Territories — not the 18 districts. A district uses its region’s average.",
   sourceNote:
-    "Source: Rating and Valuation Department, Hong Kong Property Review — Monthly Supplement, June 2026, Tables 1.1 and 1.3. Provisional figures can still be revised. This is a regional average, not an asking rent and not a valuation.",
+    "The rental index is checked against the Rating and Valuation Department once a day. Average rents are still the April 2026 regional figures. Provisional numbers can be revised. This is not an asking rent and not a valuation.",
   trendTitle: "Rental index",
+  indexSchedule: "Updated automatically from the Rating and Valuation Department each day",
+  indexFallback: "The department could not be reached. Showing the last saved figures.",
   compareTitle: "Same size class, three regions",
   openAccount: "Create an account and start the ledger",
   haveAccount: "Already registered? Sign in",

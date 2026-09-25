@@ -6,6 +6,7 @@ import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { DISTRICTS } from "@/lib/rental/hk";
 import { t } from "@/lib/rental/i18n";
 import { hkd } from "@/lib/rental/format";
+import { getRentIndex } from "@/lib/rental/index.functions";
 import {
   CLASSES,
   INDEX_YEAR,
@@ -17,6 +18,7 @@ import {
   perSqftFromSqm,
   regionOf,
   type RentClass,
+  type RentIndexPoint,
   type RentRegion,
 } from "@/lib/rental/market";
 import { useRental } from "@/lib/rental/store";
@@ -36,7 +38,9 @@ function MarketHome() {
   const { user, isPending } = useCurrentUserState();
   const [district, setDistrict] = useState("Central and Western");
   const [sqft, setSqft] = useState("500");
-  const change = indexChange();
+  const [points, setPoints] = useState<RentIndexPoint[]>(RENT_INDEX);
+  const [indexSource, setIndexSource] = useState<"pending" | "rvd" | "fallback">("pending");
+  const change = indexChange(points);
   const area = Number(sqft);
   const rentClass: RentClass = Number.isFinite(area) && area > 0 ? classFromSqft(area) : "B";
   const region = regionOf(district);
@@ -47,17 +51,39 @@ function MarketHome() {
 
   const series = useMemo(
     () =>
-      RENT_INDEX.map((row) => ({
+      points.map((row) => ({
         label: lang === "zh" ? `${Number(row.ym.slice(5))}月` : row.ym.slice(2),
         value: row.value,
         provisional: row.provisional,
       })),
-    [lang],
+    [lang, points],
   );
+  const yDomain = useMemo(() => {
+    const values = points.map((row) => row.value);
+    const low = Math.floor(Math.min(...values) - 2);
+    const high = Math.ceil(Math.max(...values) + 2);
+    return [low, high] as [number, number];
+  }, [points]);
 
   useEffect(() => {
     void Promise.resolve(useRental.persist.rehydrate()).then(() => setHydrated(true));
   }, [setHydrated]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getRentIndex()
+      .then((feed) => {
+        if (cancelled || feed.series.length < 6) return;
+        setPoints(feed.series);
+        setIndexSource(feed.source);
+      })
+      .catch(() => {
+        if (!cancelled) setIndexSource("fallback");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     document.documentElement.lang = lang === "zh" ? "zh-Hant" : "en";
@@ -111,11 +137,11 @@ function MarketHome() {
             <h1 className="font-display mt-3 text-4xl leading-tight md:text-5xl">{t(lang, "marketTitle")}</h1>
             <p className="mt-4 max-w-xl text-sm leading-relaxed text-paper/75">{t(lang, "marketLead")}</p>
             <div className="mt-8 grid gap-4 sm:grid-cols-3">
-              <IndexStat label={t(lang, "indexNow")} value={change.last.value.toFixed(1)} hint={change.last.provisional ? t(lang, "provisional") : "2026-04"} />
+              <IndexStat label={t(lang, "indexNow")} value={change.last.value.toFixed(1)} hint={change.last.provisional ? `${change.last.ym} · ${t(lang, "provisional")}` : change.last.ym} />
               <IndexStat
                 label={t(lang, "vsYear")}
                 value={`${change.pct >= 0 ? "+" : ""}${change.pct.toFixed(1)}%`}
-                hint="2025-04 → 2026-04"
+                hint={`${change.first.ym} → ${change.last.ym}`}
               />
               <IndexStat label={`2025 ${t(lang, "yearAvg")}`} value={INDEX_YEAR.y2025.toFixed(1)} hint={`2024 ${INDEX_YEAR.y2024.toFixed(1)}`} />
             </div>
@@ -172,12 +198,13 @@ function MarketHome() {
 
         <section className="mt-8 rounded-card border border-line bg-card p-4 md:p-6">
           <h2 className="font-display text-2xl text-ink">{t(lang, "trendTitle")}</h2>
-          <p className="mt-1 text-sm text-muted">1999 = 100</p>
+          <p className="mt-1 text-sm text-muted">1999 = 100 · {t(lang, "indexSchedule")}</p>
+          {indexSource === "fallback" && <p className="mt-1 text-sm text-clay">{t(lang, "indexFallback")}</p>}
           <div className="mt-4 h-56">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={series}>
                 <XAxis dataKey="label" tickLine={false} axisLine={false} interval={1} />
-                <YAxis domain={[188, 208]} tickLine={false} axisLine={false} width={36} />
+                <YAxis domain={yDomain} tickLine={false} axisLine={false} width={36} />
                 <Tooltip
                   formatter={(value) => [Number(value).toFixed(1), t(lang, "indexNow")]}
                   cursor={{ stroke: "var(--color-line)" }}

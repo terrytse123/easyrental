@@ -28,7 +28,9 @@ export const LATEST_RENTS: Record<RentClass, Cell> = {
 };
 
 /** Territory-wide private domestic rental index, all classes. Starred months are provisional. */
-export const RENT_INDEX: { ym: string; value: number; provisional: boolean }[] = [
+export type RentIndexPoint = { ym: string; value: number; provisional: boolean };
+
+export const RENT_INDEX: RentIndexPoint[] = [
   { ym: "2025-04", value: 193.9, provisional: false },
   { ym: "2025-05", value: 194.2, provisional: false },
   { ym: "2025-06", value: 195.9, provisional: false },
@@ -73,9 +75,9 @@ export function estimateRent(sqft: number, region: RentRegion, rentClass: RentCl
   return { perSqft, monthly: perSqft * sqft, thin: cell.thin.includes(region) };
 }
 
-export function indexChange() {
-  const first = RENT_INDEX[0];
-  const last = RENT_INDEX[RENT_INDEX.length - 1];
+export function indexChange(series: RentIndexPoint[] = RENT_INDEX) {
+  const first = series[0];
+  const last = series[series.length - 1];
   const pct = ((last.value - first.value) / first.value) * 100;
   return { first, last, pct };
 }
