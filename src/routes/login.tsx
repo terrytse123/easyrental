@@ -41,7 +41,7 @@ function LoginPage() {
         {!authEnabled ? (
           <p className="mt-6 text-sm text-muted">{t(lang, "authFailed")}</p>
         ) : (
-          <form method="get" action="/api/account/open" className="mt-8 max-w-md space-y-4">
+          <form id="account-form" className="mt-8 max-w-md space-y-4" onSubmit={(event) => event.preventDefault()}>
             <input type="hidden" name="page" value="1" />
             <input type="hidden" name="mode" value={accountMode} />
             {registering && <Plain label={t(lang, "displayName")} name="name" autoComplete="name" />}
@@ -55,8 +55,35 @@ function LoginPage() {
             {(registering || resetting) && (
               <Plain label={t(lang, "passwordConfirm")} name="confirm" type="password" autoComplete="new-password" />
             )}
-            <button type="submit" className="min-h-11 w-full rounded-full bg-ink text-sm font-semibold text-paper">
-              {resetting ? t(lang, "resetPassword") : registering ? t(lang, "register") : t(lang, "signIn")}
+            <button
+              type="button"
+              onClick={() => {
+                const form = document.getElementById("account-form");
+                if (!(form instanceof HTMLFormElement)) return;
+                const params = new URLSearchParams(new FormData(form));
+                const password = String(params.get("password") ?? "");
+                const confirm = String(params.get("confirm") ?? "");
+                const email = String(params.get("email") ?? "").trim();
+                if (!email.includes("@")) {
+                  window.alert("請輸入電郵。");
+                  return;
+                }
+                if (password.length < 8) {
+                  window.alert("密碼至少 8 個字。");
+                  return;
+                }
+                if (confirm && confirm !== password) {
+                  window.alert("兩次密碼不相同。");
+                  return;
+                }
+                params.set("email", email);
+                params.set("confirm", confirm || password);
+                params.set("page", "1");
+                window.location.assign(`/api/account/open?${params.toString()}`);
+              }}
+              className="min-h-11 w-full rounded-full bg-ink text-sm font-semibold text-paper"
+            >
+              {accountMode === "signin" ? "登入" : "儲存戶口"}
             </button>
             {!registering && !resetting && (
               <p className="text-sm">
