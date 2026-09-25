@@ -4,7 +4,6 @@ import { openEmailAccount } from "@/lib/auth/file-accounts.server";
 import { dbSource } from "@/lib/db";
 
 function explain(message: string): string {
-  if (/exist/i.test(message)) return "這個電郵已經開過戶。請用登入。";
   if (/no account/i.test(message)) return "沒有這個戶口。請先開戶口。";
   if (/invalid email or password/i.test(message)) return "電郵或密碼不正確。";
   if (/short/i.test(message)) return "密碼至少 8 個字。";

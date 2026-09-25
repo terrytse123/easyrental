@@ -22,12 +22,11 @@ function LoginPage() {
   const accountMode = resetting ? "reset" : registering ? "register" : "signin";
   const [status, setStatus] = useState("");
   const timer = useRef(0);
-  const busy = useRef(false);
+  const attempt = useRef(0);
 
   useEffect(() => {
     window.clearTimeout(timer.current);
-    busy.current = false;
-    setStatus(accountMode === "signin" ? "按登入。密碼是建立戶口時設定的那一組。" : "");
+    setStatus("");
   }, [accountMode]);
 
   function schedule(event: FormEvent<HTMLFormElement>) {
@@ -40,7 +39,8 @@ function LoginPage() {
   }
 
   async function save(form: HTMLFormElement) {
-    if (busy.current) return;
+    window.clearTimeout(timer.current);
+    const id = ++attempt.current;
     const data = new FormData(form);
     const email = String(data.get("email") ?? "").trim();
     const password = String(data.get("password") ?? "");
@@ -55,7 +55,6 @@ function LoginPage() {
       setStatus(confirm ? "兩次密碼不相同。" : "請再輸入一次密碼。");
       return;
     }
-    busy.current = true;
     setStatus(modeSent === "signin" ? "正在登入…" : "正在儲存到資料庫…");
     try {
       const params = new URLSearchParams({
@@ -65,23 +64,24 @@ function LoginPage() {
         confirm: confirm || password,
         mode: modeSent,
       });
-      const response = await fetch(`/api/account/open?${params.toString()}`, { headers: { accept: "application/json" } });
+      const response = await fetch(`/api/account/open?${params.toString()}`, {
+        headers: { accept: "application/json" },
+        cache: "no-store",
+      });
       const result = (await response.json()) as {
         ok?: boolean;
         token?: string;
         message?: string;
         user?: { id: string; name?: string; email?: string };
       };
+      if (id !== attempt.current) return;
       if (!result.ok || !result.token || !result.user?.id) {
-        busy.current = false;
         const message = result.message ?? "";
         setStatus(
-          accountMode === "signin" || /invalid email or password/i.test(message)
-            ? /no account/i.test(message)
-              ? "沒有這個戶口。請先開戶口。"
-              : "電郵或密碼不正確。"
-            : /exist/i.test(message)
-              ? "這個電郵已經開過戶。請用登入。"
+          /no account/i.test(message)
+            ? "沒有這個戶口。請先開戶口。"
+            : modeSent === "signin" || /invalid email or password/i.test(message)
+              ? "電郵或密碼不正確。"
               : message || "未能儲存。",
         );
         return;
@@ -96,7 +96,7 @@ function LoginPage() {
       });
       window.location.href = "/desk";
     } catch (error) {
-      busy.current = false;
+      if (id !== attempt.current) return;
       setStatus(error instanceof Error ? error.message : "未能儲存。");
     }
   }
