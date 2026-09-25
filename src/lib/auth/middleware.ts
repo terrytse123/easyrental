@@ -40,8 +40,10 @@ export const authMiddleware = createMiddleware({ type: "function" })
     // it, and so Vite does not ship `@tanstack/react-start/server` to the browser.
     const { assertSameSiteRequest } = await import("./isolation.server");
     const { requireUserId } = await import("./verify.server");
-    // Reject scripted cross-site/sibling requests before touching per-user data.
-    assertSameSiteRequest();
+    // The preview iframe often calls this app cross-site. A bearer token is not
+    // a cookie, so it is safe to accept there. Cookie sessions stay same-origin
+    // only — a sibling site must not ride them.
+    if (!context.bearerToken) assertSameSiteRequest();
     const userId = await requireUserId(context.bearerToken);
     return next({ context: { userId } });
   });

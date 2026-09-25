@@ -66,9 +66,17 @@ export async function getSessionUser(
     headers = new Headers(request.headers);
     headers.set("Authorization", `Bearer ${bearerToken}`);
   }
-  const raw = bearerToken?.trim() || headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim() || "";
-  const stored = await findAccountUser(raw);
-  if (stored) return stored;
+  const explicit = bearerToken?.trim() || "";
+  const headerToken = headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim() || "";
+  const raw = explicit || headerToken;
+  if (raw) {
+    const stored = await findAccountUser(raw);
+    if (stored) return stored;
+    // An explicit token that is not ours must not fall through to a cookie
+    // session. That fall-through let a bad token, or a cross-site call, open
+    // someone else's ledger or fail the request.
+    if (explicit) return null;
+  }
   try {
     const session = await auth.api.getSession({ headers });
     if (!session?.user) return null;

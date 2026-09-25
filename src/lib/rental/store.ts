@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { dueDateFor, monthKey, todayISO, uid } from "./format";
 import { getLedger, saveLedger } from "./ledger.functions";
+import { setBearerToken } from "@/lib/auth/client";
 import { SEED } from "./seed";
 import type {
   Lang,
@@ -66,6 +67,8 @@ function snapshot(s: State): RentalData {
 
 let saveTimer: number | undefined;
 
+let ledgerRequest = 0;
+
 function queueSave() {
   if (typeof window === "undefined") return;
   const current = useRental.getState();
@@ -109,9 +112,11 @@ export const useRental = create<State>()(
       loadLedger: async (userId) => {
         const current = useRental.getState();
         if (current.loaded && current.loadedFor === userId) return;
+        const request = ++ledgerRequest;
         set({ loading: true, loadError: false });
         try {
           const data = await getLedger();
+          if (request !== ledgerRequest) return;
           set({
             ...data,
             loading: false,
@@ -120,7 +125,14 @@ export const useRental = create<State>()(
             loadError: false,
             saveState: "idle",
           });
-        } catch {
+        } catch (err) {
+          if (request !== ledgerRequest) return;
+          const message = err instanceof Error ? err.message : "";
+          if (/unauthorized/i.test(message)) {
+            setBearerToken(null);
+            window.location.assign("/login");
+            return;
+          }
           set({ loading: false, loaded: false, loadedFor: null, loadError: true });
         }
       },
