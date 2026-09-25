@@ -269,9 +269,12 @@ function waitForPopupToken(popup: Window): Promise<string | null> {
  * preview the local clear is sufficient, so it always resolves.
  */
 export async function signOut(redirectTo = "/"): Promise<void> {
+  const bearer = Boolean(getBearerToken());
   await runSignOut({
-    livePreview: inLivePreview(),
-    hasBearer: Boolean(getBearerToken()),
+    // Email sign-in keeps its own token. Always drop that token, even when
+    // Better Auth has no cookie session to end.
+    livePreview: inLivePreview() || bearer,
+    hasBearer: bearer,
     // Better Auth resolves with `{ error }` instead of rejecting, so surface a
     // failed response as a rejection for the sequence to act on.
     requestSignOut: async () => {

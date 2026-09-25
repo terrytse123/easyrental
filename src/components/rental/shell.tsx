@@ -2,7 +2,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { BookOpen, Building2, Hammer, Home, Receipt, ScrollText } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
 import { RedirectToSignIn, UserButton } from "@/lib/auth/gates";
-import { authClient, getBearerToken } from "@/lib/auth/client";
+import { authClient, getBearerToken, signOut } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { t } from "@/lib/rental/i18n";
 import { useRental } from "@/lib/rental/store";
@@ -49,10 +49,15 @@ export function Shell({ children }: { children: ReactNode }) {
     void loadLedger(user.id);
   }, [user, loaded, loadedFor, loadLedger]);
 
-  if (isPending || getBearerToken() && !user || (user && !loaded && !loadError)) {
+  if (isPending || (getBearerToken() && !user) || (user && !loaded && !loadError)) {
     return (
       <div className="grid min-h-dvh place-items-center bg-paper px-6 text-fg">
-        <p className="text-sm text-muted">{t(lang, "ledgerLoading")}</p>
+        <div className="text-center">
+          <p className="text-sm text-muted">{t(lang, "ledgerLoading")}</p>
+          <button type="button" onClick={() => void signOut("/login")} className="mt-4 text-sm text-brass">
+            {t(lang, "signOut")}
+          </button>
+        </div>
       </div>
     );
   }
@@ -68,6 +73,9 @@ export function Shell({ children }: { children: ReactNode }) {
             className="mt-4 min-h-11 rounded-full bg-ink px-5 text-sm font-semibold text-paper"
           >
             {t(lang, "retry")}
+          </button>
+          <button type="button" onClick={() => void signOut("/login")} className="mt-4 block w-full text-sm text-brass">
+            {t(lang, "signOut")}
           </button>
         </div>
       </div>

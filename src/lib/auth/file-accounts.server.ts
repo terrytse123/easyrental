@@ -91,14 +91,24 @@ export async function openEmailAccount(input: {
   );
   const found = existing[0];
 
-  if (input.mode === "signin") {
-    if (!found || !checkPassword(password, found.password_hash)) {
+  if (input.mode === "signin" || input.mode === "reset") {
+    if (!found) return { ok: false, message: "No account" };
+    if (input.mode === "signin" && !checkPassword(password, found.password_hash)) {
       return { ok: false, message: "Invalid email or password" };
+    }
+    if (input.mode === "reset") {
+      await sql.query(`update app_users set password_hash = $1 where id = $2`, [hashPassword(password), found.id]);
     }
     const token = await startSession(sql, found.id);
     return { ok: true, token, user: { id: found.id, name: found.name, email: found.email } };
   }
-  if (found) return { ok: false, message: "User already exists. Use another email." };
+  if (found) {
+    if (checkPassword(password, found.password_hash)) {
+      const token = await startSession(sql, found.id);
+      return { ok: true, token, user: { id: found.id, name: found.name, email: found.email } };
+    }
+    return { ok: false, message: "User already exists. Use another email." };
+  }
 
   const id = randomBytes(16).toString("hex");
   const display = name || email.split("@")[0] || email;

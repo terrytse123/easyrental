@@ -7,7 +7,7 @@ import { t } from "@/lib/rental/i18n";
 import { useRental } from "@/lib/rental/store";
 
 const searchSchema = z.object({
-  mode: z.enum(["register", "signin"]).optional(),
+  mode: z.enum(["register", "signin", "reset"]).optional(),
 });
 
 export const Route = createFileRoute("/login")({
@@ -20,6 +20,7 @@ function LoginPage() {
   const lang = useRental((s) => s.lang);
   const { user } = useCurrentUserState();
   const registering = mode === "register";
+  const resetting = mode === "reset";
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -36,7 +37,7 @@ function LoginPage() {
       setError(t(lang, "passwordShort"));
       return;
     }
-    if (registering && password !== confirm) {
+    if ((registering || resetting) && password !== confirm) {
       setError(t(lang, "passwordMismatch"));
       return;
     }
@@ -46,7 +47,7 @@ function LoginPage() {
         email: email.trim(),
         password,
         name: name.trim(),
-        mode: registering ? "register" : "signin",
+        mode: resetting ? "reset" : registering ? "register" : "signin",
       };
       let response = await fetch("/api/account/open", {
         method: "POST",
@@ -72,11 +73,13 @@ function LoginPage() {
         setError(
           /exist/i.test(message)
             ? t(lang, "emailTaken")
-            : /invalid email or password/i.test(message)
-              ? t(lang, "badCredentials")
-              : /short/i.test(message)
-                ? t(lang, "passwordShort")
-                : message || t(lang, "authFailed"),
+            : /no account/i.test(message)
+              ? t(lang, "noAccount")
+              : /invalid email or password/i.test(message)
+                ? t(lang, "badCredentials")
+                : /short/i.test(message)
+                  ? t(lang, "passwordShort")
+                  : message || t(lang, "authFailed"),
         );
         setBusy(false);
         return;
@@ -106,10 +109,12 @@ function LoginPage() {
         <p className="mt-8 max-w-sm text-sm leading-relaxed text-paper/75">{t(lang, "marketLead")}</p>
       </section>
       <section className="px-6 py-8 md:px-12 md:py-12">
-        <h1 className="font-display text-4xl text-ink">{registering ? t(lang, "register") : t(lang, "signIn")}</h1>
+        <h1 className="font-display text-4xl text-ink">
+          {resetting ? t(lang, "resetPassword") : registering ? t(lang, "register") : t(lang, "signIn")}
+        </h1>
         <p className="mt-3 text-sm">
-          <Link to="/login" search={{ mode: registering ? "signin" : "register" }} className="text-brass">
-            {registering ? t(lang, "haveAccount") : t(lang, "register")}
+          <Link to="/login" search={{ mode: registering || resetting ? "signin" : "register" }} className="text-brass">
+            {registering || resetting ? t(lang, "haveAccount") : t(lang, "register")}
           </Link>
         </p>
         {!authEnabled ? (
@@ -125,9 +130,9 @@ function LoginPage() {
               type="password"
               value={password}
               onChange={setPassword}
-              autoComplete={registering ? "new-password" : "current-password"}
+              autoComplete={registering || resetting ? "new-password" : "current-password"}
             />
-            {registering && (
+            {(registering || resetting) && (
               <Field
                 label={t(lang, "passwordConfirm")}
                 type="password"
@@ -142,8 +147,15 @@ function LoginPage() {
               disabled={busy}
               className="min-h-11 w-full rounded-full bg-ink text-sm font-semibold text-paper disabled:opacity-60"
             >
-              {registering ? t(lang, "register") : t(lang, "signIn")}
+              {resetting ? t(lang, "resetPassword") : registering ? t(lang, "register") : t(lang, "signIn")}
             </button>
+            {!registering && !resetting && (
+              <p className="text-sm">
+                <Link to="/login" search={{ mode: "reset" }} className="text-brass">
+                  {t(lang, "forgotPassword")}
+                </Link>
+              </p>
+            )}
           </form>
         )}
       </section>
