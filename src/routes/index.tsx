@@ -96,6 +96,9 @@ function MarketHome() {
           <div>
             <p className="font-display text-2xl leading-none text-ink">{t(lang, "brand")}</p>
             <p className="mt-1 text-xs text-muted">{t(lang, "brandEn")}</p>
+            <a className="mt-1 block text-xs font-semibold text-brass" href="/EasyRentalHK.apk" download="EasyRentalHK.apk">
+              {lang === "zh" ? "下載 Android 版" : "Download Android app"}
+            </a>
           </div>
           <div className="flex items-center gap-2">
             <button
