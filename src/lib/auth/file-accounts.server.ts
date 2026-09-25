@@ -2,10 +2,14 @@ import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getSql, type Sql } from "@/lib/db";
+import { sendMail, verificationLetter } from "./mail.server";
+import { codesMatch, newEmailCode, newTotpSecret, otpauthUrl, verifyTotp } from "./otp.server";
 
-type OpenResult =
-  | { ok: true; token: string; user: { id: string; name: string; email: string } }
-  | { ok: false; message: string };
+type AccountUser = { id: string; name: string; email: string };
+
+export type OpenResult =
+  | { ok: true; token: string; user: AccountUser }
+  | { ok: false; message: string; next?: "verify" | "mfa"; challenge?: string };
 
 type LegacyUser = { id: string; name: string; email: string; password: string };
 type LegacySession = { token: string; userId: string; expiresAt: number };
@@ -71,25 +75,124 @@ export async function findAccountUser(token: string | null | undefined): Promise
   return rows[0] ?? null;
 }
 
+type UserRow = {
+  id: string;
+  name: string;
+  email: string;
+  password_hash: string;
+  email_verified: boolean;
+  totp_secret: string | null;
+  mfa_enabled: boolean;
+};
+
+async function findUser(sql: Sql, email: string): Promise<UserRow | undefined> {
+  const rows = await sql.query<UserRow>(
+    `select id, name, email, password_hash, email_verified, totp_secret, mfa_enabled
+     from app_users where email = $1 limit 1`,
+    [email],
+  );
+  return rows[0];
+}
+
+async function sendVerifyCode(sql: Sql, email: string): Promise<"sent" | "wait" | "mail"> {
+  const recent = await sql.query<{ sent_at: string }>(
+    `select sent_at from app_email_codes
+     where email = $1 and purpose = 'verify' and sent_at > now() - interval '30 seconds'
+     limit 1`,
+    [email],
+  );
+  if (recent[0]) return "wait";
+  const issued = newEmailCode();
+  await sql.query(
+    `insert into app_email_codes (email, purpose, code_hash, salt, sent_at, expires_at)
+     values ($1, 'verify', $2, $3, now(), now() + interval '10 minutes')
+     on conflict (email, purpose) do update
+     set code_hash = excluded.code_hash, salt = excluded.salt, sent_at = now(), expires_at = excluded.expires_at`,
+    [email, issued.hash, issued.salt],
+  );
+  const letter = verificationLetter(issued.code);
+  const sent = await sendMail(email, letter.subject, letter.text);
+  return sent.ok ? "sent" : "mail";
+}
+
+function verifyRedirect(delivery: "sent" | "wait" | "mail"): OpenResult {
+  return {
+    ok: false,
+    message: delivery === "mail" ? "Mail failed" : "Verify email",
+    next: "verify",
+  };
+}
+
+async function signedIn(sql: Sql, user: UserRow): Promise<OpenResult> {
+  const token = await startSession(sql, user.id);
+  return { ok: true, token, user: { id: user.id, name: user.name, email: user.email } };
+}
+
 export async function openEmailAccount(input: {
   email: string;
   password: string;
   name: string;
   mode: string;
+  code?: string;
+  challenge?: string;
 }): Promise<OpenResult> {
   const email = input.email.trim().toLowerCase();
   const password = input.password.trim();
   const name = input.name.trim();
+  const code = (input.code ?? "").trim();
+  const sql = await getSql();
+  await importLegacyFile(sql);
+
+  if (input.mode === "verify") {
+    if (!email.includes("@") || !/^\d{6}$/.test(code)) return { ok: false, message: "Bad code", next: "verify" };
+    const rows = await sql.query<{ code_hash: string; salt: string }>(
+      `select code_hash, salt from app_email_codes
+       where email = $1 and purpose = 'verify' and expires_at > now() limit 1`,
+      [email],
+    );
+    const pending = rows[0];
+    if (!pending || !codesMatch(code, pending.salt, pending.code_hash)) {
+      return { ok: false, message: "Bad code", next: "verify" };
+    }
+    await sql.query(`update app_users set email_verified = true where email = $1`, [email]);
+    await sql.query(`delete from app_email_codes where email = $1 and purpose = 'verify'`, [email]);
+    const user = await findUser(sql, email);
+    if (!user) return { ok: false, message: "No account" };
+    return signedIn(sql, user);
+  }
+
+  if (input.mode === "resend") {
+    const user = await findUser(sql, email);
+    if (!user) return { ok: false, message: "No account" };
+    if (user.email_verified) return { ok: false, message: "Invalid email or password" };
+    return verifyRedirect(await sendVerifyCode(sql, email));
+  }
+
+  if (input.mode === "mfa") {
+    const challenge = (input.challenge ?? "").trim();
+    const rows = await sql.query<{ user_id: string }>(
+      `select user_id from app_mfa_challenges where id = $1 and expires_at > now() limit 1`,
+      [challenge],
+    );
+    const pending = rows[0];
+    if (!pending) return { ok: false, message: "Bad code", next: "mfa" };
+    const users = await sql.query<UserRow>(
+      `select id, name, email, password_hash, email_verified, totp_secret, mfa_enabled
+       from app_users where id = $1 limit 1`,
+      [pending.user_id],
+    );
+    const user = users[0];
+    if (!user?.totp_secret || !verifyTotp(user.totp_secret, code)) {
+      return { ok: false, message: "Bad code", next: "mfa", challenge };
+    }
+    await sql.query(`delete from app_mfa_challenges where id = $1`, [challenge]);
+    return signedIn(sql, user);
+  }
+
   if (!email.includes("@") || email.length > 120) return { ok: false, message: "Invalid email" };
   if (password.length < 8 || password.length > 200) return { ok: false, message: "Password too short" };
 
-  const sql = await getSql();
-  await importLegacyFile(sql);
-  const existing = await sql.query<{ id: string; name: string; email: string; password_hash: string }>(
-    `select id, name, email, password_hash from app_users where email = $1 limit 1`,
-    [email],
-  );
-  const found = existing[0];
+  const found = await findUser(sql, email);
 
   if (input.mode === "signin" || input.mode === "reset") {
     if (!found) return { ok: false, message: "No account" };
@@ -99,14 +202,23 @@ export async function openEmailAccount(input: {
     if (input.mode === "reset") {
       await sql.query(`update app_users set password_hash = $1 where id = $2`, [hashPassword(password), found.id]);
     }
-    const token = await startSession(sql, found.id);
-    return { ok: true, token, user: { id: found.id, name: found.name, email: found.email } };
-  }
-  if (found) {
-    if (checkPassword(password, found.password_hash)) {
-      const token = await startSession(sql, found.id);
-      return { ok: true, token, user: { id: found.id, name: found.name, email: found.email } };
+    if (!found.email_verified) return verifyRedirect(await sendVerifyCode(sql, email));
+    if (found.mfa_enabled && found.totp_secret) {
+      const challenge = randomBytes(16).toString("hex");
+      await sql.query(
+        `insert into app_mfa_challenges (id, user_id, expires_at) values ($1, $2, now() + interval '5 minutes')`,
+        [challenge, found.id],
+      );
+      return { ok: false, message: "MFA required", next: "mfa", challenge };
     }
+    return signedIn(sql, found);
+  }
+
+  if (found) {
+    if (!found.email_verified && checkPassword(password, found.password_hash)) {
+      return verifyRedirect(await sendVerifyCode(sql, email));
+    }
+    if (checkPassword(password, found.password_hash) && found.email_verified) return signedIn(sql, found);
     return { ok: false, message: "Invalid email or password" };
   }
 
@@ -114,24 +226,80 @@ export async function openEmailAccount(input: {
   const display = name || email.split("@")[0] || email;
   try {
     await sql.query(
-      `insert into app_users (id, name, email, password_hash) values ($1, $2, $3, $4)`,
+      `insert into app_users (id, name, email, password_hash, email_verified) values ($1, $2, $3, $4, false)`,
       [id, display, email, hashPassword(password)],
     );
   } catch (error) {
-    const again = await sql.query<{ id: string; name: string; email: string; password_hash: string }>(
-      `select id, name, email, password_hash from app_users where email = $1 limit 1`,
-      [email],
-    );
-    const row = again[0];
-    if (row && checkPassword(password, row.password_hash)) {
-      const token = await startSession(sql, row.id);
-      return { ok: true, token, user: { id: row.id, name: row.name, email: row.email } };
+    const again = await findUser(sql, email);
+    if (again && !again.email_verified && checkPassword(password, again.password_hash)) {
+      return verifyRedirect(await sendVerifyCode(sql, email));
     }
-    if (row) return { ok: false, message: "Invalid email or password" };
+    if (again) return { ok: false, message: "Invalid email or password" };
     throw error;
   }
-  const token = await startSession(sql, id);
-  return { ok: true, token, user: { id, name: display, email } };
+  return verifyRedirect(await sendVerifyCode(sql, email));
+}
+
+export type SecurityView = {
+  email: string;
+  emailVerified: boolean;
+  mfaEnabled: boolean;
+  secret: string | null;
+  otpauth: string | null;
+};
+
+async function userFromToken(token: string | null | undefined): Promise<UserRow | null> {
+  if (!token) return null;
+  const sql = await getSql();
+  const rows = await sql.query<UserRow>(
+    `select u.id, u.name, u.email, u.password_hash, u.email_verified, u.totp_secret, u.mfa_enabled
+     from app_sessions s
+     join app_users u on u.id = s.user_id
+     where s.token = $1 and s.expires_at > now()
+     limit 1`,
+    [token],
+  );
+  return rows[0] ?? null;
+}
+
+export async function securityView(token: string | null | undefined): Promise<SecurityView | null> {
+  const user = await userFromToken(token);
+  if (!user) return null;
+  const pending = !user.mfa_enabled && user.totp_secret ? user.totp_secret : null;
+  return {
+    email: user.email,
+    emailVerified: user.email_verified,
+    mfaEnabled: user.mfa_enabled,
+    secret: pending,
+    otpauth: pending ? otpauthUrl(user.email, pending) : null,
+  };
+}
+
+export async function beginMfa(token: string | null | undefined): Promise<SecurityView | null> {
+  const user = await userFromToken(token);
+  if (!user || user.mfa_enabled) return securityView(token);
+  const secret = user.totp_secret || newTotpSecret();
+  const sql = await getSql();
+  await sql.query(`update app_users set totp_secret = $1 where id = $2`, [secret, user.id]);
+  return securityView(token);
+}
+
+export async function confirmMfa(token: string | null | undefined, code: string): Promise<"ok" | "bad" | "signed-out"> {
+  const user = await userFromToken(token);
+  if (!user) return "signed-out";
+  if (!user.totp_secret || !verifyTotp(user.totp_secret, code)) return "bad";
+  const sql = await getSql();
+  await sql.query(`update app_users set mfa_enabled = true where id = $1`, [user.id]);
+  return "ok";
+}
+
+export async function disableMfa(token: string | null | undefined, code: string): Promise<"ok" | "bad" | "signed-out"> {
+  const user = await userFromToken(token);
+  if (!user) return "signed-out";
+  if (!user.totp_secret || !verifyTotp(user.totp_secret, code)) return "bad";
+  const sql = await getSql();
+  await sql.query(`update app_users set mfa_enabled = false, totp_secret = null where id = $1`, [user.id]);
+  return "ok";
 }
 
 async function startSession(sql: Sql, userId: string): Promise<string> {

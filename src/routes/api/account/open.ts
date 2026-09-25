@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { appendFileSync } from "node:fs";
-import { findAccountUser, openEmailAccount } from "@/lib/auth/file-accounts.server";
+import { findAccountUser, openEmailAccount, beginMfa, confirmMfa, disableMfa, securityView } from "@/lib/auth/file-accounts.server";
 import { dbSource } from "@/lib/db";
 
 function fail(mode: string, email: string, message: string, asPage: boolean) {
@@ -8,17 +8,21 @@ function fail(mode: string, email: string, message: string, asPage: boolean) {
   const back = mode === "register" ? "register" : mode === "reset" ? "reset" : "signin";
   const error = /no account/i.test(message)
     ? "missing"
-    : /invalid email or password/i.test(message)
-      ? "bad"
-      : /already/i.test(message)
-        ? "exists"
-        : /mismatch/i.test(message)
-          ? "mismatch"
-          : /short/i.test(message)
-            ? "short"
-            : /invalid email/i.test(message)
-              ? "email"
-              : "fail";
+    : /bad code/i.test(message)
+      ? "code"
+      : /mail failed/i.test(message)
+        ? "mail"
+        : /invalid email or password/i.test(message)
+          ? "bad"
+          : /already/i.test(message)
+            ? "exists"
+            : /mismatch/i.test(message)
+              ? "mismatch"
+              : /short/i.test(message)
+                ? "short"
+                : /invalid email/i.test(message)
+                  ? "email"
+                  : "fail";
   const query = new URLSearchParams({ mode: back, error });
   if (email.trim()) query.set("email", email.trim().toLowerCase());
   return new Response(null, {
@@ -68,8 +72,24 @@ export async function openAccount(request: Request) {
     let name = url.searchParams.get("name") ?? "";
     let mode = url.searchParams.get("mode") ?? "register";
     const confirm = url.searchParams.get("confirm") ?? "";
+    const code = url.searchParams.get("code") ?? "";
+    const challenge = url.searchParams.get("challenge") ?? "";
+    const session = cookieValue(request.headers.get("cookie"), "er_session");
     if (mode === "signout") {
       return jsonResult({ ok: true }, null);
+    }
+    if (mode === "security") {
+      const view = await securityView(session);
+      return jsonResult(view ? { ok: true, ...view } : { ok: false });
+    }
+    if (mode === "mfa-start" || mode === "mfa-confirm" || mode === "mfa-off") {
+      if (mode === "mfa-start") await beginMfa(session);
+      const result = mode === "mfa-confirm" ? await confirmMfa(session, code) : mode === "mfa-off" ? await disableMfa(session, code) : "ok";
+      if (result === "signed-out") {
+        return new Response(null, { status: 302, headers: { location: "/login", "cache-control": "no-store" } });
+      }
+      const query = result === "bad" ? "?error=code" : result === "ok" && mode !== "mfa-start" ? "?ok=1" : "";
+      return new Response(null, { status: 302, headers: { location: `/security${query}`, "cache-control": "no-store" } });
     }
     if (mode === "me") {
       const user = await findAccountUser(cookieValue(request.headers.get("cookie"), "er_session"));
@@ -90,7 +110,7 @@ export async function openAccount(request: Request) {
     if ((mode === "register" || mode === "reset") && confirm && confirm !== password) {
       return fail(mode, email, "mismatch", wantsPage || request.method === "GET");
     }
-    const signed = await openEmailAccount({ email, password, name, mode });
+    const signed = await openEmailAccount({ email, password, name, mode, code, challenge });
     try {
       appendFileSync(
         "/tmp/account-open.log",
@@ -98,6 +118,17 @@ export async function openAccount(request: Request) {
       );
     } catch {
       /* logging must not block sign-in */
+    }
+    if (!signed.ok && signed.next && (wantsPage || request.method === "GET")) {
+      const query = new URLSearchParams({ mode: signed.next });
+      if (email.trim()) query.set("email", email.trim().toLowerCase());
+      if (signed.challenge) query.set("challenge", signed.challenge);
+      if (/mail failed/i.test(signed.message)) query.set("error", "mail");
+      if (/bad code/i.test(signed.message)) query.set("error", "code");
+      return new Response(null, {
+        status: 302,
+        headers: { location: `/login?${query.toString()}`, "cache-control": "no-store" },
+      });
     }
     if ((wantsPage || request.method === "GET") && signed.ok && mode !== "signout" && mode !== "me") {
       const saved = {
@@ -140,6 +171,11 @@ location.replace("/desk");
 </script><p><a href="/desk">進入帳簿</a></p>`, 200, signed.token);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Account request failed";
+    try {
+      appendFileSync("/tmp/account-open.log", `${new Date().toISOString()} throw ${message}\n`);
+    } catch {
+      /* ignore */
+    }
     return fail("signin", "", message, true);
   }
 }

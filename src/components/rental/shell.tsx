@@ -135,6 +135,9 @@ export function Shell({ children }: { children: ReactNode }) {
               <Link to="/" className="hidden min-h-11 items-center text-sm text-brass md:flex">
                 {t(lang, "marketHome")}
               </Link>
+              <Link to="/security" className="flex min-h-11 items-center text-sm text-brass">
+                {t(lang, "navSecurity")}
+              </Link>
               <button
                 type="button"
                 onClick={() => setLang(lang === "zh" ? "en" : "zh")}

@@ -6,9 +6,10 @@ import { t } from "@/lib/rental/i18n";
 import { useRental } from "@/lib/rental/store";
 
 const searchSchema = z.object({
-  mode: z.enum(["register", "signin", "reset"]).optional(),
+  mode: z.enum(["register", "signin", "reset", "verify", "mfa"]).optional(),
   error: z.string().optional(),
   email: z.string().optional(),
+  challenge: z.string().optional(),
 });
 
 export const Route = createFileRoute("/login")({
@@ -17,11 +18,13 @@ export const Route = createFileRoute("/login")({
 });
 
 function LoginPage() {
-  const { mode, error, email } = Route.useSearch();
+  const { mode, error, email, challenge } = Route.useSearch();
   const lang = useRental((s) => s.lang);
+  const verifying = mode === "verify";
+  const mfa = mode === "mfa";
   const registering = mode === "register";
   const resetting = mode === "reset";
-  const accountMode = resetting ? "reset" : registering ? "register" : "signin";
+  const accountMode = verifying ? "verify" : mfa ? "mfa" : resetting ? "reset" : registering ? "register" : "signin";
 
   function submitAccount(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -44,12 +47,18 @@ function LoginPage() {
       </section>
       <section className="px-6 py-8 md:px-12 md:py-12">
         <h1 className="font-display text-4xl text-ink">
-          {resetting ? t(lang, "resetPassword") : registering ? t(lang, "register") : t(lang, "signIn")}
+          {verifying ? t(lang, "verifyEmail") : mfa ? t(lang, "mfaTitle") : resetting ? t(lang, "resetPassword") : registering ? t(lang, "register") : t(lang, "signIn")}
         </h1>
         <p className="mt-3 text-sm">
-          <Link to="/login" search={{ mode: registering || resetting ? "signin" : "register" }} className="text-brass">
-            {registering || resetting ? t(lang, "haveAccount") : t(lang, "register")}
-          </Link>
+          {verifying || mfa ? (
+            <Link to="/login" search={{ mode: "signin" }} className="text-brass">
+              {t(lang, "signIn")}
+            </Link>
+          ) : (
+            <Link to="/login" search={{ mode: registering || resetting ? "signin" : "register" }} className="text-brass">
+              {registering || resetting ? t(lang, "haveAccount") : t(lang, "register")}
+            </Link>
+          )}
         </p>
         {!authEnabled ? (
           <p className="mt-6 text-sm text-muted">{t(lang, "authFailed")}</p>
@@ -64,22 +73,44 @@ function LoginPage() {
           >
             <input type="hidden" name="page" value="1" />
             <input type="hidden" name="mode" value={accountMode} />
+            {challenge ? <input type="hidden" name="challenge" value={challenge} /> : null}
             {registering && <Plain label={t(lang, "displayName")} name="name" autoComplete="name" />}
-            <Plain label={t(lang, "email")} name="email" type="email" autoComplete="username" defaultValue={email ?? ""} />
-            <Plain
-              label={t(lang, "password")}
-              name="password"
-              type="password"
-              autoComplete={accountMode === "signin" ? "current-password" : "new-password"}
-            />
+            {!mfa && (
+              <Plain label={t(lang, "email")} name="email" type="email" autoComplete="username" defaultValue={email ?? ""} />
+            )}
+            {!verifying && !mfa && (
+              <Plain
+                label={t(lang, "password")}
+                name="password"
+                type="password"
+                autoComplete={accountMode === "signin" ? "current-password" : "new-password"}
+              />
+            )}
             {(registering || resetting) && (
               <Plain label={t(lang, "passwordConfirm")} name="confirm" type="password" autoComplete="new-password" />
             )}
+            {(verifying || mfa) && (
+              <Plain label={t(lang, "verifyCode")} name="code" type="text" autoComplete="one-time-code" />
+            )}
+            {verifying && error !== "mail" && (
+              <p className="text-sm text-muted">
+                {t(lang, "verifyHint")} {email}
+              </p>
+            )}
+            {mfa && <p className="text-sm text-muted">{t(lang, "mfaHint")}</p>}
+            {registering && <p className="text-sm text-muted">{t(lang, "registerHint")}</p>}
             {error && <p className="text-sm text-clay">{notice(error, email)}</p>}
             <button id="save-account" type="submit" className="min-h-11 w-full rounded-full bg-ink text-sm font-semibold text-paper">
-              {accountMode === "signin" ? "登入" : "儲存戶口"}
+              {verifying || mfa ? t(lang, "confirmCode") : accountMode === "signin" ? t(lang, "signIn") : t(lang, "saveAccount")}
             </button>
-            {!registering && !resetting && (
+            {verifying && email && (
+              <p className="text-sm">
+                <a className="text-brass" href={`/api/account/enter?page=1&mode=resend&email=${encodeURIComponent(email)}`}>
+                  {t(lang, "resendCode")}
+                </a>
+              </p>
+            )}
+            {!registering && !resetting && !verifying && !mfa && (
               <p className="text-sm">
                 <Link to="/login" search={{ mode: "reset" }} className="text-brass">
                   {t(lang, "forgotPassword")}
@@ -99,6 +130,8 @@ function notice(error: string, email?: string) {
   if (error === "exists") return "這個電郵已經開過戶。請用登入。";
   if (error === "mismatch") return "兩次密碼不相同。";
   if (error === "short") return "密碼至少 8 個字。";
+  if (error === "code") return "驗證碼不正確或已過期。";
+  if (error === "mail") return "驗證電郵未能寄出。請在 Vercel 設定寄件後按重寄。";
   if (error === "email") return "請輸入電郵。";
   return "未能登入。";
 }
