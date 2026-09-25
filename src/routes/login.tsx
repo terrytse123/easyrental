@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect } from "react";
 import { z } from "zod";
 import { authEnabled } from "@/lib/auth/client";
 import { t } from "@/lib/rental/i18n";
@@ -13,12 +14,39 @@ export const Route = createFileRoute("/login")({
   component: LoginPage,
 });
 
+function sendAccountForm() {
+  const form = document.getElementById("account-form");
+  if (!(form instanceof HTMLFormElement)) return;
+  const params = new URLSearchParams();
+  for (const el of form.elements) {
+    if (el instanceof HTMLInputElement && el.name) params.set(el.name, el.value.trim());
+  }
+  if (!params.get("confirm")) params.set("confirm", params.get("password") ?? "");
+  params.set("page", "1");
+  window.location.href = `/api/account/open?${params.toString()}`;
+}
+
 function LoginPage() {
   const { mode } = Route.useSearch();
   const lang = useRental((s) => s.lang);
   const registering = mode === "register";
   const resetting = mode === "reset";
   const accountMode = resetting ? "reset" : registering ? "register" : "signin";
+
+  useEffect(() => {
+    const form = document.getElementById("account-form");
+    const button = document.getElementById("save-account");
+    const onSubmit = (event: Event) => {
+      event.preventDefault();
+      sendAccountForm();
+    };
+    form?.addEventListener("submit", onSubmit);
+    button?.addEventListener("click", onSubmit);
+    return () => {
+      form?.removeEventListener("submit", onSubmit);
+      button?.removeEventListener("click", onSubmit);
+    };
+  }, [accountMode]);
 
   return (
     <main className="grid min-h-dvh bg-paper text-fg md:grid-cols-[0.9fr_1.1fr]">
@@ -41,11 +69,11 @@ function LoginPage() {
         {!authEnabled ? (
           <p className="mt-6 text-sm text-muted">{t(lang, "authFailed")}</p>
         ) : (
-          <form id="account-form" className="mt-8 max-w-md space-y-4" onSubmit={(event) => event.preventDefault()}>
+          <form id="account-form" noValidate className="mt-8 max-w-md space-y-4">
             <input type="hidden" name="page" value="1" />
             <input type="hidden" name="mode" value={accountMode} />
             {registering && <Plain label={t(lang, "displayName")} name="name" autoComplete="name" />}
-            <Plain label={t(lang, "email")} name="email" type="email" autoComplete="email" />
+            <Plain label={t(lang, "email")} name="email" type="text" autoComplete="email" />
             <Plain
               label={t(lang, "password")}
               name="password"
@@ -55,34 +83,7 @@ function LoginPage() {
             {(registering || resetting) && (
               <Plain label={t(lang, "passwordConfirm")} name="confirm" type="password" autoComplete="new-password" />
             )}
-            <button
-              type="button"
-              onClick={() => {
-                const form = document.getElementById("account-form");
-                if (!(form instanceof HTMLFormElement)) return;
-                const params = new URLSearchParams(new FormData(form));
-                const password = String(params.get("password") ?? "");
-                const confirm = String(params.get("confirm") ?? "");
-                const email = String(params.get("email") ?? "").trim();
-                if (!email.includes("@")) {
-                  window.alert("請輸入電郵。");
-                  return;
-                }
-                if (password.length < 8) {
-                  window.alert("密碼至少 8 個字。");
-                  return;
-                }
-                if (confirm && confirm !== password) {
-                  window.alert("兩次密碼不相同。");
-                  return;
-                }
-                params.set("email", email);
-                params.set("confirm", confirm || password);
-                params.set("page", "1");
-                window.location.assign(`/api/account/open?${params.toString()}`);
-              }}
-              className="min-h-11 w-full rounded-full bg-ink text-sm font-semibold text-paper"
-            >
+            <button id="save-account" type="submit" className="min-h-11 w-full rounded-full bg-ink text-sm font-semibold text-paper">
               {accountMode === "signin" ? "登入" : "儲存戶口"}
             </button>
             {!registering && !resetting && (
