@@ -1,5 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { appendFileSync } from "node:fs";
 import { openEmailAccount } from "@/lib/auth/file-accounts.server";
+import { dbSource } from "@/lib/db";
 
 async function openAccount(request: Request) {
   try {
@@ -20,6 +22,14 @@ async function openAccount(request: Request) {
       }
     }
     const result = await openEmailAccount({ email, password, name, mode });
+    try {
+      appendFileSync(
+        "/tmp/account-open.log",
+        `${new Date().toISOString()} ${dbSource} ${mode} ${email.trim().toLowerCase()} ${result.ok ? "ok" : result.message}\n`,
+      );
+    } catch {
+      /* logging must not block sign-in */
+    }
     return Response.json(result, { headers: { "cache-control": "no-store" } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Account request failed";

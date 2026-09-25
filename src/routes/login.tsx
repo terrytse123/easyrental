@@ -1,8 +1,7 @@
-import { createFileRoute, Link, Navigate } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { z } from "zod";
 import { authEnabled, setBearerToken, setStoredUser } from "@/lib/auth/client";
-import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { t } from "@/lib/rental/i18n";
 import { useRental } from "@/lib/rental/store";
 
@@ -18,7 +17,6 @@ export const Route = createFileRoute("/login")({
 function LoginPage() {
   const { mode } = Route.useSearch();
   const lang = useRental((s) => s.lang);
-  const { user } = useCurrentUserState();
   const registering = mode === "register";
   const resetting = mode === "reset";
   const [name, setName] = useState("");
@@ -27,8 +25,6 @@ function LoginPage() {
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-
-  if (user) return <Navigate to="/desk" />;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
