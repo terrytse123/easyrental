@@ -2,6 +2,7 @@ import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getSql, type Sql } from "@/lib/db";
+import QRCode from "qrcode";
 import { sendMail, verificationLetter } from "./mail.server";
 import { codesMatch, newEmailCode, newTotpSecret, otpauthUrl, verifyTotp } from "./otp.server";
 
@@ -246,6 +247,7 @@ export type SecurityView = {
   mfaEnabled: boolean;
   secret: string | null;
   otpauth: string | null;
+  qr: string | null;
 };
 
 async function userFromToken(token: string | null | undefined): Promise<UserRow | null> {
@@ -266,12 +268,17 @@ export async function securityView(token: string | null | undefined): Promise<Se
   const user = await userFromToken(token);
   if (!user) return null;
   const pending = !user.mfa_enabled && user.totp_secret ? user.totp_secret : null;
+  const otpauth = pending ? otpauthUrl(user.email, pending) : null;
+  const qr = otpauth
+    ? await QRCode.toDataURL(otpauth, { margin: 1, width: 320, errorCorrectionLevel: "M" })
+    : null;
   return {
     email: user.email,
     emailVerified: user.email_verified,
     mfaEnabled: user.mfa_enabled,
     secret: pending,
-    otpauth: pending ? otpauthUrl(user.email, pending) : null,
+    otpauth,
+    qr,
   };
 }
 

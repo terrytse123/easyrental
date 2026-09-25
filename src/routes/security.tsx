@@ -19,6 +19,7 @@ type SecurityInfo = {
   mfaEnabled?: boolean;
   secret?: string | null;
   otpauth?: string | null;
+  qr?: string | null;
 };
 
 function SecurityPage() {
@@ -56,12 +57,16 @@ function SecurityPage() {
             <form method="get" action="/api/account/enter" className="space-y-3">
               <input type="hidden" name="mode" value="mfa-confirm" />
               <p className="text-muted">{t(lang, "mfaSecret")}</p>
-              <p className="break-all rounded-2xl bg-card px-3 py-2 font-mono text-ink">{info.secret}</p>
-              {info.otpauth ? (
-                <a className="block break-all text-brass" href={info.otpauth}>
-                  {info.otpauth}
-                </a>
+              {info.qr ? (
+                <img
+                  src={info.qr}
+                  alt="Authenticator QR code"
+                  width={280}
+                  height={280}
+                  className="h-64 w-64 rounded-2xl bg-white p-3"
+                />
               ) : null}
+              <p className="break-all rounded-2xl bg-card px-3 py-2 font-mono text-ink">{info.secret}</p>
               <label className="block text-muted">
                 {t(lang, "verifyCode")}
                 <input name="code" inputMode="numeric" autoComplete="one-time-code" className="mt-1 min-h-11 w-full rounded-2xl border border-line bg-card px-3 text-fg" />
