@@ -23,6 +23,7 @@ function LoginPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -33,6 +34,10 @@ function LoginPage() {
     setError("");
     if (password.length < 8) {
       setError(t(lang, "passwordShort"));
+      return;
+    }
+    if (registering && password !== confirm) {
+      setError(t(lang, "passwordMismatch"));
       return;
     }
     setBusy(true);
@@ -120,6 +125,15 @@ function LoginPage() {
               onChange={setPassword}
               autoComplete={registering ? "new-password" : "current-password"}
             />
+            {registering && (
+              <Field
+                label={t(lang, "passwordConfirm")}
+                type="password"
+                value={confirm}
+                onChange={setConfirm}
+                autoComplete="new-password"
+              />
+            )}
             {error && <p className="text-sm text-clay">{error}</p>}
             <button
               type="submit"
