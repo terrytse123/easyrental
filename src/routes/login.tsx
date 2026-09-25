@@ -1,7 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
 import { z } from "zod";
-import { authEnabled, setBearerToken, setStoredUser } from "@/lib/auth/client";
+import { authEnabled } from "@/lib/auth/client";
 import { t } from "@/lib/rental/i18n";
 import { useRental } from "@/lib/rental/store";
 
@@ -19,78 +18,7 @@ function LoginPage() {
   const lang = useRental((s) => s.lang);
   const registering = mode === "register";
   const resetting = mode === "reset";
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  async function submit(event: { preventDefault(): void }) {
-    event.preventDefault();
-    setError("");
-    if (!email.trim().includes("@")) {
-      setError(t(lang, "needEmail"));
-      return;
-    }
-    if (password.length < 8) {
-      setError(t(lang, "passwordShort"));
-      return;
-    }
-    if ((registering || resetting) && password !== confirm) {
-      setError(t(lang, "passwordMismatch"));
-      return;
-    }
-    setBusy(true);
-    try {
-      const payload = {
-        email: email.trim(),
-        password,
-        name: name.trim(),
-        mode: resetting ? "reset" : registering ? "register" : "signin",
-      };
-      // The preview only delivers GET. A POST never reaches the database.
-      const response = await fetch(`/api/account/open?${new URLSearchParams(payload)}`, {
-        method: "GET",
-        credentials: "include",
-        headers: { accept: "application/json" },
-      });
-      const result = (await response.json()) as {
-        ok?: boolean;
-        token?: string | null;
-        message?: string;
-        user?: { id: string; name?: string; email?: string };
-      };
-      if (!result.ok || !result.token || !result.user?.id) {
-        const message = result.message ?? "";
-        setError(
-          /exist/i.test(message)
-            ? t(lang, "emailTaken")
-            : /no account/i.test(message)
-              ? t(lang, "noAccount")
-              : /invalid email or password/i.test(message)
-                ? t(lang, "badCredentials")
-                : /short/i.test(message)
-                  ? t(lang, "passwordShort")
-                  : message || t(lang, "authFailed"),
-        );
-        setBusy(false);
-        return;
-      }
-      setBearerToken(result.token);
-      setStoredUser({
-        id: result.user.id,
-        displayName: result.user.name ?? null,
-        primaryEmail: result.user.email ?? payload.email,
-        profileImageUrl: null,
-        isDevFallback: false,
-      });
-      window.location.assign("/desk");
-    } catch (err) {
-      setError(err instanceof Error && err.message ? err.message : t(lang, "authFailed"));
-      setBusy(false);
-    }
-  }
+  const accountMode = resetting ? "reset" : registering ? "register" : "signin";
 
   return (
     <main className="grid min-h-dvh bg-paper text-fg md:grid-cols-[0.9fr_1.1fr]">
@@ -113,43 +41,21 @@ function LoginPage() {
         {!authEnabled ? (
           <p className="mt-6 text-sm text-muted">{t(lang, "authFailed")}</p>
         ) : (
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              void submit(event);
-            }}
-            className="mt-8 max-w-md space-y-4"
-          >
-            {registering && (
-              <Field label={t(lang, "displayName")} value={name} onChange={setName} autoComplete="name" />
-            )}
-            <Field label={t(lang, "email")} type="email" value={email} onChange={setEmail} autoComplete="email" />
-            <Field
+          <form method="get" action="/api/account/open" className="mt-8 max-w-md space-y-4">
+            <input type="hidden" name="page" value="1" />
+            <input type="hidden" name="mode" value={accountMode} />
+            {registering && <Plain label={t(lang, "displayName")} name="name" autoComplete="name" />}
+            <Plain label={t(lang, "email")} name="email" type="email" autoComplete="email" />
+            <Plain
               label={t(lang, "password")}
+              name="password"
               type="password"
-              value={password}
-              onChange={setPassword}
               autoComplete={registering || resetting ? "new-password" : "current-password"}
             />
             {(registering || resetting) && (
-              <Field
-                label={t(lang, "passwordConfirm")}
-                type="password"
-                value={confirm}
-                onChange={setConfirm}
-                autoComplete="new-password"
-              />
+              <Plain label={t(lang, "passwordConfirm")} name="confirm" type="password" autoComplete="new-password" />
             )}
-            {error && <p className="text-sm text-clay">{error}</p>}
-            <button
-              type="button"
-              disabled={busy}
-              onClick={(event) => {
-                event.preventDefault();
-                void submit(event);
-              }}
-              className="min-h-11 w-full rounded-full bg-ink text-sm font-semibold text-paper disabled:opacity-60"
-            >
+            <button type="submit" className="min-h-11 w-full rounded-full bg-ink text-sm font-semibold text-paper">
               {resetting ? t(lang, "resetPassword") : registering ? t(lang, "register") : t(lang, "signIn")}
             </button>
             {!registering && !resetting && (
@@ -166,16 +72,14 @@ function LoginPage() {
   );
 }
 
-function Field({
+function Plain({
   label,
-  value,
-  onChange,
+  name,
   type = "text",
   autoComplete,
 }: {
   label: string;
-  value: string;
-  onChange: (value: string) => void;
+  name: string;
   type?: string;
   autoComplete?: string;
 }) {
@@ -183,10 +87,9 @@ function Field({
     <label className="block text-sm text-muted">
       {label}
       <input
+        name={name}
         type={type}
-        value={value}
         autoComplete={autoComplete}
-        onChange={(e) => onChange(e.target.value)}
         className="mt-1 min-h-11 w-full rounded-2xl border border-line bg-card px-3 text-sm text-fg"
       />
     </label>
