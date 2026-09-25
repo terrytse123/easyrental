@@ -40,7 +40,7 @@ async function openAccount(request: Request) {
         /* query string is enough */
       }
     }
-    if ((mode === "register" || mode === "reset") && confirm !== password) {
+    if ((mode === "register" || mode === "reset") && confirm && confirm !== password) {
       const message = "mismatch";
       if (wantsPage) {
         return page(`<p>${explain(message)}</p><p><a href="/login?mode=${mode}">返回</a></p>`);

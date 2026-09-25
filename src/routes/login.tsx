@@ -1,5 +1,4 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect } from "react";
 import { z } from "zod";
 import { authEnabled } from "@/lib/auth/client";
 import { t } from "@/lib/rental/i18n";
@@ -14,39 +13,12 @@ export const Route = createFileRoute("/login")({
   component: LoginPage,
 });
 
-function sendAccountForm() {
-  const form = document.getElementById("account-form");
-  if (!(form instanceof HTMLFormElement)) return;
-  const params = new URLSearchParams();
-  for (const el of form.elements) {
-    if (el instanceof HTMLInputElement && el.name) params.set(el.name, el.value.trim());
-  }
-  if (!params.get("confirm")) params.set("confirm", params.get("password") ?? "");
-  params.set("page", "1");
-  window.location.href = `/api/account/open?${params.toString()}`;
-}
-
 function LoginPage() {
   const { mode } = Route.useSearch();
   const lang = useRental((s) => s.lang);
   const registering = mode === "register";
   const resetting = mode === "reset";
   const accountMode = resetting ? "reset" : registering ? "register" : "signin";
-
-  useEffect(() => {
-    const form = document.getElementById("account-form");
-    const button = document.getElementById("save-account");
-    const onSubmit = (event: Event) => {
-      event.preventDefault();
-      sendAccountForm();
-    };
-    form?.addEventListener("submit", onSubmit);
-    button?.addEventListener("click", onSubmit);
-    return () => {
-      form?.removeEventListener("submit", onSubmit);
-      button?.removeEventListener("click", onSubmit);
-    };
-  }, [accountMode]);
 
   return (
     <main className="grid min-h-dvh bg-paper text-fg md:grid-cols-[0.9fr_1.1fr]">
@@ -69,7 +41,7 @@ function LoginPage() {
         {!authEnabled ? (
           <p className="mt-6 text-sm text-muted">{t(lang, "authFailed")}</p>
         ) : (
-          <form id="account-form" noValidate className="mt-8 max-w-md space-y-4">
+          <form id="account-form" method="get" action="/api/account/open" noValidate className="mt-8 max-w-md space-y-4">
             <input type="hidden" name="page" value="1" />
             <input type="hidden" name="mode" value={accountMode} />
             {registering && <Plain label={t(lang, "displayName")} name="name" autoComplete="name" />}
