@@ -7,6 +7,8 @@ import { useRental } from "@/lib/rental/store";
 
 const searchSchema = z.object({
   mode: z.enum(["register", "signin", "reset"]).optional(),
+  error: z.string().optional(),
+  email: z.string().optional(),
 });
 
 export const Route = createFileRoute("/login")({
@@ -15,7 +17,7 @@ export const Route = createFileRoute("/login")({
 });
 
 function LoginPage() {
-  const { mode } = Route.useSearch();
+  const { mode, error, email } = Route.useSearch();
   const lang = useRental((s) => s.lang);
   const registering = mode === "register";
   const resetting = mode === "reset";
@@ -28,7 +30,7 @@ function LoginPage() {
     for (const [key, value] of data.entries()) {
       if (typeof value === "string") params.set(key, value.trim());
     }
-    window.location.assign(`/api/account/open?${params.toString()}`);
+    window.location.assign(`/api/account/enter?${params.toString()}`);
   }
 
   return (
@@ -56,14 +58,14 @@ function LoginPage() {
             id="account-form"
             noValidate
             className="mt-8 max-w-md space-y-4"
-            action="/api/account/open"
+            action="/api/account/enter"
             method="get"
             onSubmit={submitAccount}
           >
             <input type="hidden" name="page" value="1" />
             <input type="hidden" name="mode" value={accountMode} />
             {registering && <Plain label={t(lang, "displayName")} name="name" autoComplete="name" />}
-            <Plain label={t(lang, "email")} name="email" type="email" autoComplete="username" />
+            <Plain label={t(lang, "email")} name="email" type="email" autoComplete="username" defaultValue={email ?? ""} />
             <Plain
               label={t(lang, "password")}
               name="password"
@@ -73,6 +75,7 @@ function LoginPage() {
             {(registering || resetting) && (
               <Plain label={t(lang, "passwordConfirm")} name="confirm" type="password" autoComplete="new-password" />
             )}
+            {error && <p className="text-sm text-clay">{notice(error, email)}</p>}
             <button id="save-account" type="submit" className="min-h-11 w-full rounded-full bg-ink text-sm font-semibold text-paper">
               {accountMode === "signin" ? "登入" : "儲存戶口"}
             </button>
@@ -90,16 +93,28 @@ function LoginPage() {
   );
 }
 
+function notice(error: string, email?: string) {
+  if (error === "missing") return `沒有這個戶口${email ? `：${email}` : ""}。請先開戶口。`;
+  if (error === "bad") return "電郵或密碼不正確。";
+  if (error === "exists") return "這個電郵已經開過戶。請用登入。";
+  if (error === "mismatch") return "兩次密碼不相同。";
+  if (error === "short") return "密碼至少 8 個字。";
+  if (error === "email") return "請輸入電郵。";
+  return "未能登入。";
+}
+
 function Plain({
   label,
   name,
   type = "text",
   autoComplete,
+  defaultValue,
 }: {
   label: string;
   name: string;
   type?: string;
   autoComplete?: string;
+  defaultValue?: string;
 }) {
   return (
     <label className="block text-sm text-muted">
@@ -108,6 +123,7 @@ function Plain({
         name={name}
         type={type}
         autoComplete={autoComplete}
+        defaultValue={defaultValue}
         className="mt-1 min-h-11 w-full rounded-2xl border border-line bg-card px-3 text-sm text-fg"
       />
     </label>

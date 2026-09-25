@@ -3,13 +3,28 @@ import { appendFileSync } from "node:fs";
 import { findAccountUser, openEmailAccount } from "@/lib/auth/file-accounts.server";
 import { dbSource } from "@/lib/db";
 
-function explain(message: string): string {
-  if (/no account/i.test(message)) return "沒有這個戶口。請先開戶口。";
-  if (/invalid email or password/i.test(message)) return "電郵或密碼不正確。";
-  if (/short/i.test(message)) return "密碼至少 8 個字。";
-  if (/mismatch/i.test(message)) return "兩次密碼不相同。";
-  if (/invalid email/i.test(message)) return "請輸入電郵。";
-  return message || "未能儲存戶口。";
+function fail(mode: string, email: string, message: string, asPage: boolean) {
+  if (!asPage) return jsonResult({ ok: false, message });
+  const back = mode === "register" ? "register" : mode === "reset" ? "reset" : "signin";
+  const error = /no account/i.test(message)
+    ? "missing"
+    : /invalid email or password/i.test(message)
+      ? "bad"
+      : /already/i.test(message)
+        ? "exists"
+        : /mismatch/i.test(message)
+          ? "mismatch"
+          : /short/i.test(message)
+            ? "short"
+            : /invalid email/i.test(message)
+              ? "email"
+              : "fail";
+  const query = new URLSearchParams({ mode: back, error });
+  if (email.trim()) query.set("email", email.trim().toLowerCase());
+  return new Response(null, {
+    status: 302,
+    headers: { location: `/login?${query.toString()}`, "cache-control": "no-store" },
+  });
 }
 
 function sessionCookie(token: string | null): string {
@@ -44,7 +59,7 @@ function cookieValue(header: string | null, name: string): string {
   return "";
 }
 
-async function openAccount(request: Request) {
+export async function openAccount(request: Request) {
   const url = new URL(request.url);
   const wantsPage = url.searchParams.get("page") === "1";
   try {
@@ -73,11 +88,7 @@ async function openAccount(request: Request) {
     }
     password = password.trim();
     if ((mode === "register" || mode === "reset") && confirm && confirm !== password) {
-      const message = "mismatch";
-      if (wantsPage) {
-        return page(`<p>${explain(message)}</p><p><a href="/login?mode=${mode}">返回</a></p>`);
-      }
-      return jsonResult({ ok: false, message });
+      return fail(mode, email, "mismatch", wantsPage || request.method === "GET");
     }
     const signed = await openEmailAccount({ email, password, name, mode });
     try {
@@ -106,11 +117,8 @@ async function openAccount(request: Request) {
       headers.append("set-cookie", sessionCookie(signed.token));
       return new Response(null, { status: 302, headers });
     }
-    if (!wantsPage) return jsonResult(signed, signed.ok ? signed.token : undefined);
-    if (!signed.ok) {
-      const back = mode === "signin" ? "signin" : mode;
-      return page(`<p>${explain(signed.message)}</p><p><a href="/login?mode=${back}">返回</a></p>`);
-    }
+    if (!wantsPage && request.method !== "GET") return jsonResult(signed, signed.ok ? signed.token : undefined);
+    if (!signed.ok) return fail(mode, email, signed.message, true);
     const saved = {
       token: signed.token,
       user: {
@@ -132,8 +140,7 @@ location.replace("/desk");
 </script><p><a href="/desk">進入帳簿</a></p>`, 200, signed.token);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Account request failed";
-    if (wantsPage) return page(`<p>${explain(message)}</p><p><a href="/login?mode=register">返回</a></p>`, 500);
-    return jsonResult({ ok: false, message }, undefined, 500);
+    return fail("signin", "", message, true);
   }
 }
 
