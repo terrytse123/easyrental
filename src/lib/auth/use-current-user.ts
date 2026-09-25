@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { authClient, authEnabled, getStoredUser, setStoredUser } from "./client";
+import { authClient, authEnabled, getStoredUser, setBearerToken, setStoredUser } from "./client";
 
 /** Normalized user shape used across the app, auth on or off. */
 export type AppUser = {
@@ -55,6 +55,25 @@ export type CurrentUserState = {
  * `authEnabled` is a module-level constant fixed at load, so the guarded hook
  * call keeps a stable hook order across every render of a given component.
  */
+function readAuthHash(): AppUser | null {
+  if (typeof window === "undefined") return null;
+  const hash = window.location.hash;
+  if (!hash.startsWith("#auth=")) return null;
+  try {
+    const saved = JSON.parse(decodeURIComponent(hash.slice("#auth=".length))) as {
+      token?: string;
+      user?: AppUser;
+    };
+    if (!saved.token || !saved.user?.id) return null;
+    setBearerToken(saved.token);
+    setStoredUser(saved.user);
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    return saved.user;
+  } catch {
+    return null;
+  }
+}
+
 export function useCurrentUserState(): CurrentUserState {
   if (!authEnabled) return { user: DEV_USER, isPending: false };
   // eslint-disable-next-line react-hooks/rules-of-hooks -- authEnabled is constant for the app's lifetime
@@ -62,7 +81,8 @@ export function useCurrentUserState(): CurrentUserState {
   const [localUser, setLocalUser] = useState<AppUser | null>(null);
   const [cookieChecked, setCookieChecked] = useState(false);
   useEffect(() => {
-    const stored = getStoredUser();
+    const fromHash = readAuthHash();
+    const stored = fromHash ?? getStoredUser();
     if (stored) {
       setLocalUser(stored);
       setCookieChecked(true);

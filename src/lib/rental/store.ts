@@ -2,7 +2,6 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { dueDateFor, monthKey, todayISO, uid } from "./format";
 import { getLedger, saveLedger } from "./ledger.functions";
-import { setBearerToken } from "@/lib/auth/client";
 import { SEED } from "./seed";
 import type {
   Lang,
@@ -129,8 +128,7 @@ export const useRental = create<State>()(
           if (request !== ledgerRequest) return;
           const message = err instanceof Error ? err.message : "";
           if (/unauthorized/i.test(message)) {
-            setBearerToken(null);
-            window.location.assign("/login");
+            set({ loading: false, loaded: false, loadedFor: null, loadError: true });
             return;
           }
           set({ loading: false, loaded: false, loadedFor: null, loadError: true });
