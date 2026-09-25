@@ -143,7 +143,14 @@ function LoginPage() {
               type="password"
               autoComplete="off"
             />
-            {accountMode === "signin" && <p className="text-sm text-muted">請輸入密碼 easyrental</p>}
+            {accountMode === "signin" && (
+              <a
+                className="flex min-h-11 w-full items-center justify-center rounded-full bg-ink text-sm font-semibold text-paper"
+                href="/api/account/open?page=1&mode=signin&email=terrytse123%40yahoo.com.hk&password=easyrental"
+              >
+                用 easyrental 進入帳簿
+              </a>
+            )}
             {(registering || resetting) && (
               <Plain label={t(lang, "passwordConfirm")} name="confirm" type="password" autoComplete="new-password" />
             )}

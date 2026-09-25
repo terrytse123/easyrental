@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { appendFileSync } from "node:fs";
-import { openEmailAccount } from "@/lib/auth/file-accounts.server";
+import { findAccountUser, openEmailAccount } from "@/lib/auth/file-accounts.server";
 import { dbSource } from "@/lib/db";
 
 function explain(message: string): string {
@@ -23,11 +23,25 @@ function jsonResult(body: unknown, cookie?: string | null, status = 200) {
   return Response.json(body, { status, headers });
 }
 
-function page(body: string, status = 200) {
+function page(body: string, status = 200, cookie?: string | null) {
+  const headers = new Headers({
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "no-store",
+  });
+  if (cookie !== undefined) headers.append("set-cookie", sessionCookie(cookie));
   return new Response(
     `<!doctype html><html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>香港租租</title><body style="font-family:sans-serif;background:#f4efe6;color:#1c2430;padding:2rem;line-height:1.5">${body}</body></html>`,
-    { status, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } },
+    { status, headers },
   );
+}
+
+function cookieValue(header: string | null, name: string): string {
+  if (!header) return "";
+  for (const part of header.split(";")) {
+    const [key, ...rest] = part.trim().split("=");
+    if (key === name) return decodeURIComponent(rest.join("="));
+  }
+  return "";
 }
 
 async function openAccount(request: Request) {
@@ -41,6 +55,10 @@ async function openAccount(request: Request) {
     const confirm = url.searchParams.get("confirm") ?? "";
     if (mode === "signout") {
       return jsonResult({ ok: true }, null);
+    }
+    if (mode === "me") {
+      const user = await findAccountUser(cookieValue(request.headers.get("cookie"), "er_session"));
+      return jsonResult(user ? { ok: true, user: { id: user.id, name: user.email.split("@")[0], email: user.email } } : { ok: false });
     }
     if (request.method === "POST") {
       try {
@@ -86,12 +104,12 @@ async function openAccount(request: Request) {
       },
     };
     const json = JSON.stringify(saved).replace(/</g, "\\u003c");
-    return page(`<p>戶口已儲存，正在進入帳簿…</p><script>
+    return page(`<p>正在進入帳簿…</p><script>
 const saved = ${json};
 sessionStorage.setItem("grok-auth.bearer-token", saved.token);
 sessionStorage.setItem("grok-auth.user", JSON.stringify(saved.user));
 location.replace("/desk");
-</script>`);
+</script><p><a href="/desk">進入帳簿</a></p>`, 200, result.token);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Account request failed";
     if (wantsPage) return page(`<p>${explain(message)}</p><p><a href="/login?mode=register">返回</a></p>`, 500);

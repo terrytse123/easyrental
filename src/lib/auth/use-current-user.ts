@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { authClient, authEnabled, getStoredUser } from "./client";
+import { authClient, authEnabled, getStoredUser, setStoredUser } from "./client";
 
 /** Normalized user shape used across the app, auth on or off. */
 export type AppUser = {
@@ -60,8 +60,30 @@ export function useCurrentUserState(): CurrentUserState {
   // eslint-disable-next-line react-hooks/rules-of-hooks -- authEnabled is constant for the app's lifetime
   const { data, isPending } = authClient.useSession();
   const [localUser, setLocalUser] = useState<AppUser | null>(null);
+  const [cookieChecked, setCookieChecked] = useState(false);
   useEffect(() => {
-    setLocalUser(getStoredUser());
+    const stored = getStoredUser();
+    if (stored) {
+      setLocalUser(stored);
+      setCookieChecked(true);
+      return;
+    }
+    void fetch("/api/account/open?mode=me", { credentials: "include", cache: "no-store" })
+      .then((response) => response.json())
+      .then((result: { ok?: boolean; user?: { id?: string; name?: string; email?: string } }) => {
+        if (!result?.ok || !result.user?.id) return;
+        const user: AppUser = {
+          id: result.user.id,
+          displayName: result.user.name ?? null,
+          primaryEmail: result.user.email ?? null,
+          profileImageUrl: null,
+          isDevFallback: false,
+        };
+        setStoredUser(user);
+        setLocalUser(user);
+      })
+      .catch(() => undefined)
+      .finally(() => setCookieChecked(true));
   }, []);
   const sessionUser = data?.user;
   return {
@@ -74,7 +96,7 @@ export function useCurrentUserState(): CurrentUserState {
           isDevFallback: false,
         }
       : localUser,
-    isPending: isPending && !localUser,
+    isPending: !cookieChecked || (isPending && !localUser),
   };
 }
 
