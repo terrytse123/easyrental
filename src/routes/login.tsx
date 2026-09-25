@@ -1,7 +1,7 @@
 import { createFileRoute, Link, Navigate, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { z } from "zod";
-import { GROK_PROVIDERS, authClient, authEnabled, signIn } from "@/lib/auth/client";
+import { GROK_PROVIDERS, authClient, authEnabled, rememberAuthToken, signIn } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { t } from "@/lib/rental/i18n";
 import { useRental } from "@/lib/rental/store";
@@ -19,7 +19,7 @@ function LoginPage() {
   const { mode } = Route.useSearch();
   const lang = useRental((s) => s.lang);
   const navigate = useNavigate();
-  const { user, isPending } = useCurrentUserState();
+  const { user } = useCurrentUserState();
   const registering = mode === "register";
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -27,7 +27,6 @@ function LoginPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  if (isPending) return <div className="min-h-dvh bg-paper" />;
   if (user) return <Navigate to="/desk" />;
 
   async function submit(event: FormEvent) {
@@ -39,18 +38,27 @@ function LoginPage() {
     }
     setBusy(true);
     try {
+      const payload = { email: email.trim(), password };
       const result = registering
-        ? await authClient.signUp.email({ name: name.trim() || email, email: email.trim(), password })
-        : await authClient.signIn.email({ email: email.trim(), password });
+        ? await authClient.signUp.email({
+            ...payload,
+            name: name.trim() || email.trim(),
+            fetchOptions: { onSuccess: (ctx) => rememberAuthToken(ctx.response) },
+          })
+        : await authClient.signIn.email({
+            ...payload,
+            fetchOptions: { onSuccess: (ctx) => rememberAuthToken(ctx.response) },
+          });
       if (result.error) {
         const message = result.error.message ?? "";
-        setError(/exist/i.test(message) ? t(lang, "emailTaken") : t(lang, "authFailed"));
+        setError(/exist/i.test(message) ? t(lang, "emailTaken") : message || t(lang, "authFailed"));
         setBusy(false);
         return;
       }
+      await authClient.getSession();
       await navigate({ to: "/desk" });
-    } catch {
-      setError(t(lang, "authFailed"));
+    } catch (err) {
+      setError(err instanceof Error && err.message ? err.message : t(lang, "authFailed"));
       setBusy(false);
     }
   }
