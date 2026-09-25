@@ -6,8 +6,17 @@ import { fileURLToPath } from "node:url";
 export function databaseUrl() {
   const fromEnv = process.env.DATABASE_URL?.trim();
   if (fromEnv) return fromEnv;
-  try {
-    const text = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", ".env"), "utf8");
+  const candidates = [
+    join(dirname(fileURLToPath(import.meta.url)), "..", ".env"),
+    join(process.cwd(), ".env"),
+  ];
+  for (const file of candidates) {
+    let text = "";
+    try {
+      text = readFileSync(file, "utf8");
+    } catch {
+      continue;
+    }
     for (const line of text.split("\n")) {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith("#")) continue;
@@ -23,8 +32,6 @@ export function databaseUrl() {
       }
       if (value.trim()) return value.trim();
     }
-  } catch {
-    /* no local .env */
   }
   return undefined;
 }
