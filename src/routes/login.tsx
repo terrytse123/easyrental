@@ -50,8 +50,7 @@ function LoginPage() {
         body: JSON.stringify(payload),
       });
       if (!response.ok) {
-        const query = new URLSearchParams(payload);
-        response = await fetch(`/api/account/open?${query.toString()}`, {
+        response = await fetch(`/api/account/open?${new URLSearchParams(payload)}`, {
           method: "GET",
           credentials: "include",
           headers: { accept: "application/json" },
