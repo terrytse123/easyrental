@@ -1,7 +1,7 @@
-import { createFileRoute, Link, Navigate, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, Navigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { z } from "zod";
-import { GROK_PROVIDERS, authClient, authEnabled, rememberAuthToken, signIn } from "@/lib/auth/client";
+import { GROK_PROVIDERS, authClient, authEnabled, setBearerToken, signIn } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { t } from "@/lib/rental/i18n";
 import { useRental } from "@/lib/rental/store";
@@ -18,7 +18,6 @@ export const Route = createFileRoute("/login")({
 function LoginPage() {
   const { mode } = Route.useSearch();
   const lang = useRental((s) => s.lang);
-  const navigate = useNavigate();
   const { user } = useCurrentUserState();
   const registering = mode === "register";
   const [name, setName] = useState("");
@@ -38,31 +37,44 @@ function LoginPage() {
     }
     setBusy(true);
     try {
-      const payload = { email: email.trim(), password };
-      const result = registering
-        ? await authClient.signUp.email({
-            ...payload,
-            name: name.trim() || email.trim(),
-            fetchOptions: { onSuccess: (ctx) => rememberAuthToken(ctx.response) },
-          })
-        : await authClient.signIn.email({
-            ...payload,
-            fetchOptions: { onSuccess: (ctx) => rememberAuthToken(ctx.response) },
-          });
-      if (result.error) {
-        const message = result.error.message ?? "";
+      const query = new URLSearchParams({
+        email: email.trim(),
+        password,
+        name: name.trim(),
+        mode: registering ? "register" : "signin",
+      });
+      const response = await fetch(`/api/account/open?${query.toString()}`, {
+        method: "GET",
+        credentials: "include",
+        headers: { accept: "application/json" },
+      });
+      const result = (await response.json()) as { ok?: boolean; token?: string | null; message?: string };
+      if (!result.ok) {
+        const message = result.message ?? "";
         setError(
           /exist/i.test(message)
             ? t(lang, "emailTaken")
             : /invalid origin/i.test(message)
               ? t(lang, "originBlocked")
-              : message || t(lang, "authFailed"),
+              : /short|password/i.test(message)
+                ? t(lang, "passwordShort")
+                : message || t(lang, "authFailed"),
         );
         setBusy(false);
         return;
       }
-      await authClient.getSession();
-      await navigate({ to: "/desk" });
+      const headerToken = response.headers.get("set-auth-token");
+      const token = result.token || headerToken;
+      if (token) setBearerToken(token);
+      const session = await authClient.getSession({
+        fetchOptions: token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
+      });
+      if (!session.data?.user) {
+        setError(session.error?.message || t(lang, "authFailed"));
+        setBusy(false);
+        return;
+      }
+      window.location.assign("/desk");
     } catch (err) {
       setError(err instanceof Error && err.message ? err.message : t(lang, "authFailed"));
       setBusy(false);

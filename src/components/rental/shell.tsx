@@ -2,6 +2,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { BookOpen, Building2, Hammer, Home, Receipt, ScrollText } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
 import { RedirectToSignIn, UserButton } from "@/lib/auth/gates";
+import { authClient, getBearerToken } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { t } from "@/lib/rental/i18n";
 import { useRental } from "@/lib/rental/store";
@@ -39,12 +40,16 @@ export function Shell({ children }: { children: ReactNode }) {
   }, [lang]);
 
   useEffect(() => {
+    if (!user && getBearerToken()) void authClient.getSession();
+  }, [user]);
+
+  useEffect(() => {
     if (!user) return;
     if (loaded && loadedFor === user.id) return;
     void loadLedger(user.id);
   }, [user, loaded, loadedFor, loadLedger]);
 
-  if (isPending || (user && !loaded && !loadError)) {
+  if (isPending || getBearerToken() && !user || (user && !loaded && !loadError)) {
     return (
       <div className="grid min-h-dvh place-items-center bg-paper px-6 text-fg">
         <p className="text-sm text-muted">{t(lang, "ledgerLoading")}</p>
