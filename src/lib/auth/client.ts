@@ -278,6 +278,7 @@ export async function signOut(redirectTo = "/"): Promise<void> {
     // Better Auth resolves with `{ error }` instead of rejecting, so surface a
     // failed response as a rejection for the sequence to act on.
     requestSignOut: async () => {
+      await fetch("/api/account/open?mode=signout", { credentials: "include" }).catch(() => undefined);
       const { error } = await authClient.signOut();
       if (error) throw new Error(error.message ?? "Sign-out failed");
     },

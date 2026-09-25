@@ -45,6 +45,15 @@ export class UnauthorizedError extends Error {
 
 export type VerifiedUser = { id: string; email: string | null };
 
+function readCookie(header: string | null, name: string): string {
+  if (!header) return "";
+  for (const part of header.split(";")) {
+    const [key, ...rest] = part.trim().split("=");
+    if (key === name) return decodeURIComponent(rest.join("="));
+  }
+  return "";
+}
+
 /**
  * Resolve the signed-in user from the current request, or `null` when auth isn't
  * configured / nobody is signed in. Safe to call from server functions and SSR
@@ -68,13 +77,11 @@ export async function getSessionUser(
   }
   const explicit = bearerToken?.trim() || "";
   const headerToken = headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim() || "";
-  const raw = explicit || headerToken;
+  const cookieToken = readCookie(request.headers.get("cookie"), "er_session");
+  const raw = explicit || headerToken || cookieToken;
   if (raw) {
     const stored = await findAccountUser(raw);
     if (stored) return stored;
-    // An explicit token that is not ours must not fall through to a cookie
-    // session. That fall-through let a bad token, or a cross-site call, open
-    // someone else's ledger or fail the request.
     if (explicit) return null;
   }
   try {

@@ -12,6 +12,17 @@ function explain(message: string): string {
   return message || "未能儲存戶口。";
 }
 
+function sessionCookie(token: string | null): string {
+  if (!token) return "er_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0";
+  return `er_session=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=1209600`;
+}
+
+function jsonResult(body: unknown, cookie?: string | null, status = 200) {
+  const headers = new Headers({ "cache-control": "no-store" });
+  if (cookie !== undefined) headers.append("set-cookie", sessionCookie(cookie));
+  return Response.json(body, { status, headers });
+}
+
 function page(body: string, status = 200) {
   return new Response(
     `<!doctype html><html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>香港租租</title><body style="font-family:sans-serif;background:#f4efe6;color:#1c2430;padding:2rem;line-height:1.5">${body}</body></html>`,
@@ -28,6 +39,9 @@ async function openAccount(request: Request) {
     let name = url.searchParams.get("name") ?? "";
     let mode = url.searchParams.get("mode") ?? "register";
     const confirm = url.searchParams.get("confirm") ?? "";
+    if (mode === "signout") {
+      return jsonResult({ ok: true }, null);
+    }
     if (request.method === "POST") {
       try {
         const body = (await request.json()) as { email?: string; password?: string; name?: string; mode?: string };
@@ -39,23 +53,24 @@ async function openAccount(request: Request) {
         /* query string is enough */
       }
     }
+    password = password.trim();
     if ((mode === "register" || mode === "reset") && confirm && confirm !== password) {
       const message = "mismatch";
       if (wantsPage) {
         return page(`<p>${explain(message)}</p><p><a href="/login?mode=${mode}">返回</a></p>`);
       }
-      return Response.json({ ok: false, message }, { headers: { "cache-control": "no-store" } });
+      return jsonResult({ ok: false, message });
     }
     const result = await openEmailAccount({ email, password, name, mode });
     try {
       appendFileSync(
         "/tmp/account-open.log",
-        `${new Date().toISOString()} ${dbSource} ${mode} ${email.trim().toLowerCase()} ${result.ok ? "ok" : result.message}\n`,
+        `${new Date().toISOString()} ${dbSource} ${mode} ${email.trim().toLowerCase()} len=${password.length} ${result.ok ? "ok" : result.message}\n`,
       );
     } catch {
       /* logging must not block sign-in */
     }
-    if (!wantsPage) return Response.json(result, { headers: { "cache-control": "no-store" } });
+    if (!wantsPage) return jsonResult(result, result.ok ? result.token : undefined);
     if (!result.ok) {
       const back = mode === "signin" ? "signin" : mode;
       return page(`<p>${explain(result.message)}</p><p><a href="/login?mode=${back}">返回</a></p>`);
@@ -80,7 +95,7 @@ location.replace("/desk");
   } catch (error) {
     const message = error instanceof Error ? error.message : "Account request failed";
     if (wantsPage) return page(`<p>${explain(message)}</p><p><a href="/login?mode=register">返回</a></p>`, 500);
-    return Response.json({ ok: false, message });
+    return jsonResult({ ok: false, message }, undefined, 500);
   }
 }
 

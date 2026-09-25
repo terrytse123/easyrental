@@ -43,7 +43,7 @@ function LoginPage() {
     const id = ++attempt.current;
     const data = new FormData(form);
     const email = String(data.get("email") ?? "").trim();
-    const password = String(data.get("password") ?? "");
+    const password = String(data.get("password") ?? "").trim();
     const confirm = String(data.get("confirm") ?? "");
     const name = String(data.get("name") ?? "").trim();
     const modeSent = accountMode;
@@ -67,6 +67,7 @@ function LoginPage() {
       const response = await fetch(`/api/account/open?${params.toString()}`, {
         headers: { accept: "application/json" },
         cache: "no-store",
+        credentials: "include",
       });
       const result = (await response.json()) as {
         ok?: boolean;
@@ -135,13 +136,14 @@ function LoginPage() {
             <input type="hidden" name="page" value="1" />
             <input type="hidden" name="mode" value={accountMode} />
             {registering && <Plain label={t(lang, "displayName")} name="name" autoComplete="name" />}
-            <Plain label={t(lang, "email")} name="email" type="text" autoComplete="email" />
+            <Plain label={t(lang, "email")} name="email" type="text" autoComplete="off" />
             <Plain
               label={t(lang, "password")}
               name="password"
               type="password"
-              autoComplete={registering || resetting ? "new-password" : "current-password"}
+              autoComplete="off"
             />
+            {accountMode === "signin" && <p className="text-sm text-muted">請輸入密碼 easyrental</p>}
             {(registering || resetting) && (
               <Plain label={t(lang, "passwordConfirm")} name="confirm" type="password" autoComplete="new-password" />
             )}

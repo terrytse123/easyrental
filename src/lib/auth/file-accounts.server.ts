@@ -78,7 +78,7 @@ export async function openEmailAccount(input: {
   mode: string;
 }): Promise<OpenResult> {
   const email = input.email.trim().toLowerCase();
-  const password = input.password;
+  const password = input.password.trim();
   const name = input.name.trim();
   if (!email.includes("@") || email.length > 120) return { ok: false, message: "Invalid email" };
   if (password.length < 8 || password.length > 200) return { ok: false, message: "Password too short" };
