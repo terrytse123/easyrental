@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 import { dueDateFor, monthKey, todayISO, uid } from "./format";
 import { isLedgerConflict } from "./ledger-conflict";
 import { getLedger, saveLedger } from "./ledger.functions";
+import { asLedger } from "./ledger-parse";
 import { SEED } from "./seed";
 import type {
   Lang,
@@ -202,128 +203,5 @@ export const useRental = create<State>()(
       updateTenant: (id, patch) => {
         set((s) => ({ tenants: s.tenants.map((t) => (t.id === id ? { ...t, ...patch } : t)) }));
         queueSave();
+        return id;
       },
-      removeTenant: (id) => {
-        set((s) => {
-          const tenancyIds = new Set(s.tenancies.filter((t) => t.tenantId === id).map((t) => t.id));
-          return {
-            tenants: s.tenants.filter((t) => t.id !== id),
-            tenancies: s.tenancies.filter((t) => t.tenantId !== id),
-            payments: s.payments.filter((p) => !tenancyIds.has(p.tenancyId)),
-          };
-        });
-        queueSave();
-      },
-      addTenancy: (t) => {
-        set((s) => {
-          const tenancy: Tenancy = { ...t, id: uid("tn") };
-          const charge = withCurrentCharge(s, tenancy);
-          return {
-            tenancies: [tenancy, ...s.tenancies],
-            payments: charge ? [charge, ...s.payments] : s.payments,
-          };
-        });
-        queueSave();
-      },
-      updateTenancy: (id, patch) => {
-        set((s) => {
-          const tenancies = s.tenancies.map((t) => (t.id === id ? { ...t, ...patch } : t));
-          const next = tenancies.find((t) => t.id === id);
-          if (!next || (patch.rent === undefined && patch.dueDay === undefined)) return { tenancies };
-          return {
-            tenancies,
-            payments: s.payments.map((p) => {
-              if (p.tenancyId !== id || p.paidAmount > 0) return p;
-              return {
-                ...p,
-                amount: patch.rent ?? p.amount,
-                dueDate: patch.dueDay === undefined ? p.dueDate : dueDateFor(p.period, next.dueDay),
-              };
-            }),
-          };
-        });
-        queueSave();
-      },
-      removeTenancy: (id) => {
-        set((s) => ({
-          tenancies: s.tenancies.filter((t) => t.id !== id),
-          payments: s.payments.filter((p) => p.tenancyId !== id),
-        }));
-        queueSave();
-      },
-      addPayment: (input) => {
-        const period = input.period.slice(0, 7);
-        if (!/^\d{4}-\d{2}$/.test(period) || !input.tenancyId || input.amount < 0) return;
-        set((s) => {
-          const lease = s.tenancies.find((t) => t.id === input.tenancyId);
-          const payment: Payment = {
-            id: uid("pay"),
-            tenancyId: input.tenancyId,
-            period,
-            amount: input.amount,
-            paidAmount: input.paidDate ? input.amount : 0,
-            dueDate: dueDateFor(period, lease?.dueDay ?? 1),
-            paidDate: input.paidDate || undefined,
-            method: input.paidDate ? input.method : undefined,
-            ref: input.ref.trim() || undefined,
-          };
-          return { payments: [payment, ...s.payments] };
-        });
-        queueSave();
-      },
-      markPaid: (id, method, ref, paidDate) => {
-        set((s) => ({
-          payments: s.payments.map((p) =>
-            p.id === id
-              ? {
-                  ...p,
-                  paidAmount: p.amount,
-                  paidDate: paidDate || todayISO(),
-                  method,
-                  ref: ref.trim() || undefined,
-                }
-              : p,
-          ),
-        }));
-        queueSave();
-      },
-      addTicket: (t) => {
-        set((s) => ({
-          tickets: [{ ...t, id: uid("k"), created: todayISO() }, ...s.tickets],
-        }));
-        queueSave();
-      },
-      setTicketStatus: (id, status) => {
-        set((s) => ({
-          tickets: s.tickets.map((t) => (t.id === id ? { ...t, status } : t)),
-        }));
-        queueSave();
-      },
-      removeTicket: (id) => {
-        set((s) => ({ tickets: s.tickets.filter((t) => t.id !== id) }));
-        queueSave();
-      },
-      resetDemo: () => {
-        set({ ...SEED });
-        queueSave();
-      },
-      importData: (data) => {
-        set({
-          properties: data.properties ?? [],
-          tenants: data.tenants ?? [],
-          tenancies: data.tenancies ?? [],
-          payments: data.payments ?? [],
-          tickets: data.tickets ?? [],
-        });
-        queueSave();
-      },
-    }),
-    {
-      name: "easyrental-lang-v1",
-      skipHydration: true,
-      partialize: (s) => ({ lang: s.lang }),
-    },
-  ),
-);
-
-export type { Priority };
