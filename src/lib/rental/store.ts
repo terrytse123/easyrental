@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { dueDateFor, monthKey, todayISO, uid } from "./format";
+import { isLedgerConflict } from "./ledger-conflict";
 import { getLedger, saveLedger } from "./ledger.functions";
 import { SEED } from "./seed";
 import type {
@@ -16,19 +17,23 @@ import type {
   TicketStatus,
 } from "./types";
 
-type SaveState = "idle" | "error";
+type SaveState = "idle" | "error" | "conflict";
 
 type State = RentalData & {
   lang: Lang;
   hydrated: boolean;
   loaded: boolean;
   loadedFor: string | null;
+  /** Last known server updated_at for optimistic concurrency; null if no row yet. */
+  ledgerUpdatedAt: string | null;
   loading: boolean;
   loadError: boolean;
   saveState: SaveState;
   setLang: (lang: Lang) => void;
   setHydrated: (v: boolean) => void;
-  loadLedger: (userId: string) => Promise<void>;
+  loadLedger: (userId: string, opts?: { force?: boolean }) => Promise<void>;
+  /** Re-fetch from server after a multi-device conflict (discards local unsaved edits). */
+  reloadLedger: () => Promise<void>;
   addProperty: (p: Omit<Property, "id">) => void;
   updateProperty: (id: string, patch: Partial<Property>) => void;
   removeProperty: (id: string) => void;
@@ -80,12 +85,28 @@ function queueSave() {
   if (typeof window === "undefined") return;
   const current = useRental.getState();
   if (!current.loaded || !current.loadedFor) return;
+  // Do not silently overwrite after another device won; wait for reload.
+  if (current.saveState === "conflict") return;
   window.clearTimeout(saveTimer);
   saveTimer = window.setTimeout(() => {
     const next = useRental.getState();
-    if (!next.loaded) return;
-    void saveLedger({ data: snapshot(next) })
-      .then(() => useRental.setState({ saveState: "idle" }))
+    if (!next.loaded || next.saveState === "conflict") return;
+    const expectedUpdatedAt = next.ledgerUpdatedAt;
+    void saveLedger({
+      data: {
+        ledger: snapshot(next),
+        expectedUpdatedAt,
+      },
+    })
+      .then((result) => {
+        if (isLedgerConflict(result)) {
+          useRental.setState({ saveState: "conflict" });
+          return;
+        }
+        if (result.ok) {
+          useRental.setState({ saveState: "idle", ledgerUpdatedAt: result.updatedAt });
+        }
+      })
       .catch(() => useRental.setState({ saveState: "error" }));
   }, 400);
 }
@@ -111,24 +132,26 @@ export const useRental = create<State>()(
       hydrated: false,
       loaded: false,
       loadedFor: null,
+      ledgerUpdatedAt: null,
       loading: false,
       loadError: false,
       saveState: "idle",
       setLang: (lang) => set({ lang }),
       setHydrated: (hydrated) => set({ hydrated }),
-      loadLedger: async (userId) => {
+      loadLedger: async (userId, opts) => {
         const current = useRental.getState();
-        if (current.loaded && current.loadedFor === userId) return;
+        if (!opts?.force && current.loaded && current.loadedFor === userId) return;
         const request = ++ledgerRequest;
         set({ loading: true, loadError: false });
         try {
-          const data = await getLedger();
+          const loaded = await getLedger();
           if (request !== ledgerRequest) return;
           set({
-            ...data,
+            ...loaded.data,
             loading: false,
             loaded: true,
             loadedFor: userId,
+            ledgerUpdatedAt: loaded.updatedAt,
             loadError: false,
             saveState: "idle",
           });
@@ -136,11 +159,17 @@ export const useRental = create<State>()(
           if (request !== ledgerRequest) return;
           const message = err instanceof Error ? err.message : "";
           if (/unauthorized/i.test(message)) {
-            set({ loading: false, loaded: false, loadedFor: null, loadError: true });
+            set({ loading: false, loaded: false, loadedFor: null, ledgerUpdatedAt: null, loadError: true });
             return;
           }
-          set({ loading: false, loaded: false, loadedFor: null, loadError: true });
+          set({ loading: false, loaded: false, loadedFor: null, ledgerUpdatedAt: null, loadError: true });
         }
+      },
+      reloadLedger: async () => {
+        const userId = useRental.getState().loadedFor;
+        if (!userId) return;
+        window.clearTimeout(saveTimer);
+        await useRental.getState().loadLedger(userId, { force: true });
       },
       addProperty: (p) => {
         set((s) => ({ properties: [{ ...p, id: uid("p") }, ...s.properties] }));
