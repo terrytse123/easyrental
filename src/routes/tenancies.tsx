@@ -15,6 +15,7 @@ import {
 import { daysUntil, fmtDate, hkd } from "@/lib/rental/format";
 import { t } from "@/lib/rental/i18n";
 import { useRental } from "@/lib/rental/store";
+import type { Tenancy, Tenant } from "@/lib/rental/types";
 
 export const Route = createFileRoute("/tenancies")({ component: TenanciesPage });
 
@@ -27,17 +28,18 @@ function TenanciesPage() {
   const updateTenancy = useRental((s) => s.updateTenancy);
   const removeTenancy = useRental((s) => s.removeTenancy);
   const addTenant = useRental((s) => s.addTenant);
+  const updateTenant = useRental((s) => s.updateTenant);
   const removeTenant = useRental((s) => s.removeTenant);
-  const [leaseOpen, setLeaseOpen] = useState(false);
-  const [tenantOpen, setTenantOpen] = useState(false);
+  const [leaseEdit, setLeaseEdit] = useState<Tenancy | "new" | null>(null);
+  const [tenantEdit, setTenantEdit] = useState<Tenant | "new" | null>(null);
 
   return (
     <Shell>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <h1 className="font-display text-4xl text-ink">{t(lang, "navTenancies")}</h1>
         <div className="flex gap-2">
-          <GhostButton onClick={() => setTenantOpen(true)}>{t(lang, "addTenant")}</GhostButton>
-          <PrimaryButton onClick={() => setLeaseOpen(true)} disabled={properties.length === 0 || tenants.length === 0}>
+          <GhostButton onClick={() => setTenantEdit("new")}>{t(lang, "addTenant")}</GhostButton>
+          <PrimaryButton onClick={() => setLeaseEdit("new")} disabled={properties.length === 0 || tenants.length === 0}>
             {t(lang, "addTenancy")}
           </PrimaryButton>
         </div>
@@ -69,6 +71,7 @@ function TenanciesPage() {
                 />
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
+                <GhostButton onClick={() => setLeaseEdit(lease)}>{t(lang, "edit")}</GhostButton>
                 <GhostButton onClick={() => updateTenancy(lease.id, { stamped: !lease.stamped })}>
                   {lease.stamped ? t(lang, "unstamped") : t(lang, "stamped")}
                 </GhostButton>
@@ -90,28 +93,33 @@ function TenanciesPage() {
             <p className="mt-1 text-sm text-muted">{person.phone}</p>
             <p className="text-sm text-muted">{person.email}</p>
             {person.notes && <p className="mt-2 text-sm">{person.notes}</p>}
-            <div className="mt-3">
+            <div className="mt-3 flex gap-2">
+              <GhostButton onClick={() => setTenantEdit(person)}>{t(lang, "edit")}</GhostButton>
               <DangerButton onClick={() => removeTenant(person.id)}>{t(lang, "delete")}</DangerButton>
             </div>
           </li>
         ))}
       </ul>
 
-      {leaseOpen && (
+      {leaseEdit && (
         <LeaseForm
-          onClose={() => setLeaseOpen(false)}
+          initial={leaseEdit === "new" ? undefined : leaseEdit}
+          onClose={() => setLeaseEdit(null)}
           onSave={(value) => {
-            addTenancy(value);
-            setLeaseOpen(false);
+            if (leaseEdit === "new") addTenancy(value);
+            else updateTenancy(leaseEdit.id, value);
+            setLeaseEdit(null);
           }}
         />
       )}
-      {tenantOpen && (
+      {tenantEdit && (
         <TenantForm
-          onClose={() => setTenantOpen(false)}
+          initial={tenantEdit === "new" ? undefined : tenantEdit}
+          onClose={() => setTenantEdit(null)}
           onSave={(value) => {
-            addTenant(value);
-            setTenantOpen(false);
+            if (tenantEdit === "new") addTenant(value);
+            else updateTenant(tenantEdit.id, value);
+            setTenantEdit(null);
           }}
         />
       )}
@@ -131,9 +139,11 @@ function Meta({ label, value }: { label: string; value: string }) {
 }
 
 function LeaseForm({
+  initial,
   onClose,
   onSave,
 }: {
+  initial?: Tenancy;
   onClose: () => void;
   onSave: (value: {
     propertyId: string;
@@ -150,16 +160,17 @@ function LeaseForm({
   const lang = useRental((s) => s.lang);
   const properties = useRental((s) => s.properties);
   const tenants = useRental((s) => s.tenants);
-  const [propertyId, setPropertyId] = useState(properties[0]?.id ?? "");
-  const [tenantId, setTenantId] = useState(tenants[0]?.id ?? "");
-  const [start, setStart] = useState("2026-10-01");
-  const [end, setEnd] = useState("2028-09-30");
-  const [rent, setRent] = useState(properties[0]?.rent ?? 15000);
-  const [dueDay, setDueDay] = useState(1);
-  const [stamped, setStamped] = useState(false);
+  const [propertyId, setPropertyId] = useState(initial?.propertyId ?? properties[0]?.id ?? "");
+  const [tenantId, setTenantId] = useState(initial?.tenantId ?? tenants[0]?.id ?? "");
+  const [start, setStart] = useState(initial?.start ?? "2026-10-01");
+  const [end, setEnd] = useState(initial?.end ?? "2028-09-30");
+  const [rent, setRent] = useState(initial?.rent ?? properties[0]?.rent ?? 15000);
+  const [deposit, setDeposit] = useState(initial?.deposit ?? (properties[0]?.rent ?? 15000) * 2);
+  const [dueDay, setDueDay] = useState(initial?.dueDay ?? 1);
+  const [stamped, setStamped] = useState(initial?.stamped ?? false);
 
   return (
-    <Sheet title={t(lang, "addTenancy")} onClose={onClose}>
+    <Sheet title={initial ? t(lang, "edit") : t(lang, "addTenancy")} onClose={onClose}>
       <form
         className="grid gap-3"
         onSubmit={(e) => {
@@ -170,10 +181,10 @@ function LeaseForm({
             start,
             end,
             rent,
-            deposit: rent * 2,
+            deposit,
             dueDay,
             stamped,
-            active: true,
+            active: initial?.active ?? true,
           });
         }}
       >
@@ -183,8 +194,12 @@ function LeaseForm({
             onChange={(e) => {
               const id = e.target.value;
               setPropertyId(id);
+              if (initial) return;
               const found = properties.find((p) => p.id === id);
-              if (found) setRent(found.rent);
+              if (found) {
+                setRent(found.rent);
+                setDeposit(found.rent * 2);
+              }
             }}
           >
             {properties.map((p) => (
@@ -213,21 +228,30 @@ function LeaseForm({
         </div>
         <div className="grid grid-cols-2 gap-3">
           <Field label={t(lang, "rent")}>
-            <TextInput type="number" min={0} value={rent} onChange={(e) => setRent(Number(e.target.value))} />
-          </Field>
-          <Field label={t(lang, "dueDay")}>
             <TextInput
               type="number"
-              min={1}
-              max={28}
-              value={dueDay}
-              onChange={(e) => setDueDay(Number(e.target.value))}
+              min={0}
+              value={rent}
+              onChange={(e) => {
+                const next = Number(e.target.value);
+                setRent(next);
+                if (!initial) setDeposit(next * 2);
+              }}
             />
           </Field>
+          <Field label={t(lang, "deposit")}>
+            <TextInput type="number" min={0} value={deposit} onChange={(e) => setDeposit(Number(e.target.value))} />
+          </Field>
         </div>
-        <p className="text-sm text-muted">
-          {t(lang, "deposit")}: {hkd(rent * 2, lang)}
-        </p>
+        <Field label={t(lang, "dueDay")}>
+          <TextInput
+            type="number"
+            min={1}
+            max={28}
+            value={dueDay}
+            onChange={(e) => setDueDay(Number(e.target.value))}
+          />
+        </Field>
         <label className="flex min-h-11 items-center gap-2 text-sm">
           <input type="checkbox" checked={stamped} onChange={(e) => setStamped(e.target.checked)} />
           {t(lang, "stamped")}
@@ -244,19 +268,21 @@ function LeaseForm({
 }
 
 function TenantForm({
+  initial,
   onClose,
   onSave,
 }: {
+  initial?: Tenant;
   onClose: () => void;
   onSave: (value: { name: string; phone: string; email: string; notes: string }) => void;
 }) {
   const lang = useRental((s) => s.lang);
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const [notes, setNotes] = useState("");
+  const [name, setName] = useState(initial?.name ?? "");
+  const [phone, setPhone] = useState(initial?.phone ?? "");
+  const [email, setEmail] = useState(initial?.email ?? "");
+  const [notes, setNotes] = useState(initial?.notes ?? "");
   return (
-    <Sheet title={t(lang, "addTenant")} onClose={onClose}>
+    <Sheet title={initial ? t(lang, "edit") : t(lang, "addTenant")} onClose={onClose}>
       <form
         className="grid gap-3"
         onSubmit={(e) => {

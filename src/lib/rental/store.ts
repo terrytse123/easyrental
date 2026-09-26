@@ -189,9 +189,22 @@ export const useRental = create<State>()(
         queueSave();
       },
       updateTenancy: (id, patch) => {
-        set((s) => ({
-          tenancies: s.tenancies.map((t) => (t.id === id ? { ...t, ...patch } : t)),
-        }));
+        set((s) => {
+          const tenancies = s.tenancies.map((t) => (t.id === id ? { ...t, ...patch } : t));
+          const next = tenancies.find((t) => t.id === id);
+          if (!next || (patch.rent === undefined && patch.dueDay === undefined)) return { tenancies };
+          return {
+            tenancies,
+            payments: s.payments.map((p) => {
+              if (p.tenancyId !== id || p.paidAmount > 0) return p;
+              return {
+                ...p,
+                amount: patch.rent ?? p.amount,
+                dueDate: patch.dueDay === undefined ? p.dueDate : dueDateFor(p.period, next.dueDay),
+              };
+            }),
+          };
+        });
         queueSave();
       },
       removeTenancy: (id) => {

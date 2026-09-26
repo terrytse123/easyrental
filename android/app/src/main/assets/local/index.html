@@ -55,6 +55,7 @@
     const empty = () => ({ properties: [], tenants: [], tenancies: [], payments: [], tickets: [] });
     let db = empty();
     let tab = "home";
+    let editLeaseId = "";
 
     function uid(prefix) { return prefix + "-" + Math.random().toString(36).slice(2, 10); }
     function monthKey(d = new Date()) {
@@ -158,13 +159,15 @@
       },
       leases() {
         if (!db.properties.length) return `<p>請先新增物業。</p>`;
-        const opts = db.properties.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("");
+        const editing = byId(db.tenancies, editLeaseId);
+        const who = editing && byId(db.tenants, editing.tenantId);
+        const opts = db.properties.map((p) => `<option value="${p.id}"${editing && editing.propertyId === p.id ? " selected" : ""}>${esc(p.name)}</option>`).join("");
         const list = db.tenancies.map((t) => {
           const home = byId(db.properties, t.propertyId);
-          const who = byId(db.tenants, t.tenantId);
-          return `<div class="item card"><div><p>${esc(who ? who.name : "租客")} · ${hkd(t.rent)}</p><p class="sub">${esc(home ? home.name : "")} · ${esc(t.start)} 至 ${esc(t.end)}</p></div><button type="button" class="danger" data-action="del-lease" data-id="${t.id}">結束</button></div>`;
+          const person = byId(db.tenants, t.tenantId);
+          return `<div class="item card"><div><p>${esc(person ? person.name : "租客")} · ${hkd(t.rent)}</p><p class="sub">${esc(home ? home.name : "")} · ${esc(t.start)} 至 ${esc(t.end)}</p></div><div><button type="button" class="ghost" data-action="edit-lease" data-id="${t.id}">修改</button><button type="button" class="danger" data-action="del-lease" data-id="${t.id}">結束</button></div></div>`;
         }).join("") || `<p class="sub">尚未有租約。</p>`;
-        return `<form data-kind="lease"><label>物業<select name="propertyId">${opts}</select></label><label>租客姓名<input name="tenant" required></label><label>電話<input name="phone"></label><label>月租（HK$）<input name="rent" inputmode="numeric" required></label><label>開始<input name="start" type="date" required></label><label>結束<input name="end" type="date" required></label><label>每月交租日<input name="dueDay" inputmode="numeric" value="1"></label><button class="primary" type="submit">新增租約</button></form>${list}`;
+        return `<form data-kind="lease"><label>物業<select name="propertyId">${opts}</select></label><label>租客姓名<input name="tenant" required value="${esc(who ? who.name : "")}"></label><label>電話<input name="phone" value="${esc(who ? who.phone : "")}"></label><label>月租（HK$）<input name="rent" inputmode="numeric" required value="${editing ? editing.rent : ""}"></label><label>開始<input name="start" type="date" required value="${editing ? editing.start : ""}"></label><label>結束<input name="end" type="date" required value="${editing ? editing.end : ""}"></label><label>每月交租日<input name="dueDay" inputmode="numeric" value="${editing ? editing.dueDay : 1}"></label><button class="primary" type="submit">${editing ? "儲存修改" : "新增租約"}</button>${editing ? `<button type="button" class="ghost" data-action="cancel-lease">取消</button>` : ""}</form>${list}`;
       },
       pay() {
         const list = db.payments.map((p) => {
@@ -192,11 +195,31 @@
         db.properties.unshift({ id: uid("p"), name: data.name.trim(), address: data.address.trim(), district: data.district, type: "private", beds: 0, baths: 0, sqft: Number(data.sqft) || 0, rent: 0, managementFee: 0, rates: 0, notes: "" });
       }
       if (kind === "lease") {
-        const tenantId = uid("t");
-        db.tenants.unshift({ id: tenantId, name: data.tenant.trim(), phone: data.phone.trim(), email: "", notes: "" });
-        const tenancy = { id: uid("tn"), propertyId: data.propertyId, tenantId, start: data.start, end: data.end, rent: Number(data.rent) || 0, deposit: (Number(data.rent) || 0) * 2, dueDay: Math.min(28, Math.max(1, Number(data.dueDay) || 1)), stamped: false, active: true };
-        db.tenancies.unshift(tenancy);
-        ensureCharge(tenancy);
+        const rent = Number(data.rent) || 0;
+        const dueDay = Math.min(28, Math.max(1, Number(data.dueDay) || 1));
+        const existing = editLeaseId ? byId(db.tenancies, editLeaseId) : null;
+        if (existing) {
+          const tenant = byId(db.tenants, existing.tenantId);
+          if (tenant) { tenant.name = data.tenant.trim(); tenant.phone = data.phone.trim(); }
+          existing.propertyId = data.propertyId;
+          existing.start = data.start;
+          existing.end = data.end;
+          existing.rent = rent;
+          existing.deposit = rent * 2;
+          existing.dueDay = dueDay;
+          db.payments.forEach((p) => {
+            if (p.tenancyId !== existing.id || p.paidAmount > 0) return;
+            p.amount = rent;
+            p.dueDate = p.period + "-" + String(dueDay).padStart(2, "0");
+          });
+          editLeaseId = "";
+        } else {
+          const tenantId = uid("t");
+          db.tenants.unshift({ id: tenantId, name: data.tenant.trim(), phone: data.phone.trim(), email: "", notes: "" });
+          const tenancy = { id: uid("tn"), propertyId: data.propertyId, tenantId, start: data.start, end: data.end, rent, deposit: rent * 2, dueDay, stamped: false, active: true };
+          db.tenancies.unshift(tenancy);
+          ensureCharge(tenancy);
+        }
       }
       if (kind === "paid") {
         const payment = byId(db.payments, data.id);
@@ -220,7 +243,19 @@
         db.tickets = db.tickets.filter((t) => t.propertyId !== id);
         persist();
       }
+      if (el.dataset.action === "edit-lease") {
+        editLeaseId = id;
+        tab = "leases";
+        render();
+        return;
+      }
+      if (el.dataset.action === "cancel-lease") {
+        editLeaseId = "";
+        render();
+        return;
+      }
       if (el.dataset.action === "del-lease" && confirm("結束這份租約？")) {
+        if (editLeaseId === id) editLeaseId = "";
         db.tenancies = db.tenancies.filter((t) => t.id !== id);
         db.payments = db.payments.filter((p) => p.tenancyId !== id);
         persist();
