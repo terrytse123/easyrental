@@ -27,7 +27,7 @@ import java.nio.charset.StandardCharsets;
 
 public class MainActivity extends Activity {
     private static final String HOME = "https://easyrentalhk.vercel.app/";
-    private static final String LOCAL = "file:///android_asset/local/index.html?v=4";
+    private static final String LOCAL = "file:///android_asset/local/index.html?v=5";
 
     private WebView webView;
     private View chooser;

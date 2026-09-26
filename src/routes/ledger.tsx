@@ -11,7 +11,7 @@ import {
   Sheet,
   TextInput,
 } from "@/components/rental/ui";
-import { fmtDate, hkd, paymentState, rentNotice, whatsappHref } from "@/lib/rental/format";
+import { fmtDate, hkd, paymentState } from "@/lib/rental/format";
 import { PAY_METHODS } from "@/lib/rental/hk";
 import { t } from "@/lib/rental/i18n";
 import { useRental } from "@/lib/rental/store";
@@ -77,15 +77,6 @@ function LedgerPage() {
                   ? t(lang, "statusPartial")
                   : t(lang, "statusDue");
           const method = PAY_METHODS.find((m) => m.id === p.method);
-          const notice = rentNotice({
-            lang,
-            tenant: tenant?.name || (lang === "zh" ? "租客" : "there"),
-            property: property?.name || (lang === "zh" ? "單位" : "the flat"),
-            period: p.period,
-            amount: hkd(p.amount - p.paidAmount, lang),
-            due: fmtDate(p.dueDate, lang),
-          });
-          const whatsapp = tenant?.phone ? whatsappHref(tenant.phone, notice) : null;
           return (
             <li key={p.id} className="rounded-2xl border border-line bg-card px-4 py-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -108,16 +99,7 @@ function LedgerPage() {
                     <Pill tone={tone}>{label}</Pill>
                   </div>
                   {state !== "paid" && (
-                    <div className="flex flex-col items-end gap-1">
-                      <PrimaryButton onClick={() => setPaying(p)}>{t(lang, "markPaid")}</PrimaryButton>
-                      {whatsapp ? (
-                        <a href={whatsapp} target="_blank" rel="noreferrer" className="min-h-11 text-sm font-semibold text-brass">
-                          {t(lang, "whatsapp")}
-                        </a>
-                      ) : (
-                        <span className="text-xs text-muted">{t(lang, "whatsappNeedPhone")}</span>
-                      )}
-                    </div>
+                    <PrimaryButton onClick={() => setPaying(p)}>{t(lang, "markPaid")}</PrimaryButton>
                   )}
                 </div>
               </div>

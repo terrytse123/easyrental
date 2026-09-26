@@ -4,7 +4,7 @@ import { Shell } from "@/components/rental/shell";
 import { Money, Pill } from "@/components/rental/ui";
 import { DISTRICTS } from "@/lib/rental/hk";
 import { t } from "@/lib/rental/i18n";
-import { daysUntil, hkd, monthKey, paymentState, rentNotice, whatsappHref } from "@/lib/rental/format";
+import { daysUntil, hkd, monthKey, paymentState, RENEW_WITHIN_DAYS, renewalText, whatsappToMe } from "@/lib/rental/format";
 import { useRental } from "@/lib/rental/store";
 
 export const Route = createFileRoute("/desk")({ component: Desk });
@@ -23,7 +23,10 @@ function Desk() {
   const expected = monthPays.reduce((a, p) => a + p.amount, 0);
   const collected = monthPays.reduce((a, p) => a + Math.min(p.paidAmount, p.amount), 0);
   const overdue = payments.filter((p) => paymentState(p) === "overdue");
-  const expiring = tenancies.filter((x) => x.active && daysUntil(x.end) >= 0 && daysUntil(x.end) <= 60);
+  const expiring = tenancies.filter((x) => x.active && daysUntil(x.end) >= 0 && daysUntil(x.end) <= RENEW_WITHIN_DAYS);
+  const renewals = tenancies
+    .filter((x) => x.active && daysUntil(x.end) <= RENEW_WITHIN_DAYS)
+    .sort((a, b) => a.end.localeCompare(b.end));
   const open = tickets.filter((k) => k.status !== "done");
 
   const chart = ["2026-07", "2026-08", "2026-09", "2026-10"].map((period) => {
@@ -99,6 +102,41 @@ function Desk() {
         </div>
       </section>
 
+      <section className="mt-6">
+        <h2 className="font-display text-2xl text-ink">{t(lang, "renewTitle")}</h2>
+        <p className="mt-1 text-sm text-muted">{t(lang, "renewHint")}</p>
+        <ul className="mt-3 flex flex-col gap-2">
+          {renewals.map((lease) => {
+            const property = properties.find((x) => x.id === lease.propertyId);
+            const tenant = tenants.find((x) => x.id === lease.tenantId);
+            const days = daysUntil(lease.end);
+            const text = renewalText({
+              lang,
+              tenant: tenant?.name || (lang === "zh" ? "租客" : "tenant"),
+              property: property?.name || (lang === "zh" ? "單位" : "the flat"),
+              end: lease.end,
+              days,
+            });
+            return (
+              <li key={lease.id} className="rounded-2xl border border-line bg-card px-4 py-3">
+                <p className="font-medium">{property?.name}</p>
+                <p className="text-sm text-muted">
+                  {tenant?.name} · {lease.end}
+                  {days >= 0 ? ` · ${days}${lang === "zh" ? " 日" : " days"}` : ""}
+                </p>
+                <p className={`mt-1 text-sm ${days < 0 ? "text-clay" : "text-ink"}`}>
+                  {days < 0 ? t(lang, "renewLate") : t(lang, "renewNow")}
+                </p>
+                <a href={whatsappToMe(text)} target="_blank" rel="noreferrer" className="mt-2 inline-flex min-h-11 items-center text-sm font-semibold text-brass">
+                  {t(lang, "whatsappMe")}
+                </a>
+              </li>
+            );
+          })}
+        </ul>
+        {renewals.length === 0 && <p className="mt-3 text-sm text-muted">{t(lang, "renewNone")}</p>}
+      </section>
+
       <section className="mt-6 grid gap-4 lg:grid-cols-2">
         <div>
           <div className="mb-3 flex items-center justify-between">
@@ -114,15 +152,6 @@ function Desk() {
               const tenant = tenants.find((x) => x.id === tenancy?.tenantId);
               const state = paymentState(p);
               const district = DISTRICTS.find((d) => d.id === property?.district);
-              const notice = rentNotice({
-                lang,
-                tenant: tenant?.name || (lang === "zh" ? "租客" : "there"),
-                property: property?.name || (lang === "zh" ? "單位" : "the flat"),
-                period: p.period,
-                amount: hkd(Math.max(p.amount - p.paidAmount, 0), lang),
-                due: p.dueDate,
-              });
-              const whatsapp = state !== "paid" && tenant?.phone ? whatsappHref(tenant.phone, notice) : null;
               return (
                 <li key={p.id} className="rounded-2xl border border-line bg-card px-4 py-3">
                   <div className="flex items-start justify-between gap-3">
@@ -139,11 +168,6 @@ function Desk() {
                       <Pill tone={state === "overdue" ? "clay" : "brass"}>
                         {state === "overdue" ? t(lang, "statusOverdue") : p.dueDate.slice(5)}
                       </Pill>
-                      {whatsapp ? (
-                        <a href={whatsapp} target="_blank" rel="noreferrer" className="mt-1 block text-sm font-semibold text-brass">
-                          {t(lang, "whatsapp")}
-                        </a>
-                      ) : null}
                     </div>
                   </div>
                 </li>

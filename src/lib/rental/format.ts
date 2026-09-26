@@ -41,27 +41,29 @@ export function daysUntil(iso: string, today = todayISO()) {
   return Math.round((b.getTime() - a.getTime()) / 86400000);
 }
 
-export function whatsappHref(phone: string, text: string) {
-  let digits = phone.replace(/\D/g, "");
-  if (digits.startsWith("852") && digits.length === 11) {
-    /* already a Hong Kong mobile number */
-  } else if (digits.length === 8) digits = `852${digits}`;
-  if (digits.length < 8 || digits.length > 15) return null;
-  return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
+export const RENEW_WITHIN_DAYS = 90;
+
+export function whatsappToMe(text: string) {
+  return `https://wa.me/?text=${encodeURIComponent(text)}`;
 }
 
-export function rentNotice(input: {
+export function renewalText(input: {
   lang: "zh" | "en";
   tenant: string;
   property: string;
-  period: string;
-  amount: string;
-  due: string;
+  end: string;
+  days: number;
 }) {
   if (input.lang === "zh") {
-    return `${input.tenant}你好，${input.property} ${input.period} 的租金 ${input.amount} 將於 ${input.due} 到期，請安排繳付。謝謝。`;
+    if (input.days < 0) {
+      return `提醒：${input.property}（${input.tenant}）的租約已於 ${input.end} 結束。請盡快同租客確認續約或退租。`;
+    }
+    return `提醒：${input.property}（${input.tenant}）的租約將於 ${input.end} 到期，還有 ${input.days} 日。現在應聯絡租客談續約。`;
   }
-  return `Hello ${input.tenant}, rent of ${input.amount} for ${input.property} (${input.period}) is due on ${input.due}. Please arrange payment. Thank you.`;
+  if (input.days < 0) {
+    return `Reminder: the lease for ${input.property} (${input.tenant}) ended on ${input.end}. Confirm a renewal or a move-out.`;
+  }
+  return `Reminder: the lease for ${input.property} (${input.tenant}) ends on ${input.end}, in ${input.days} days. Contact the tenant about renewal now.`;
 }
 
 export function uid(prefix: string) {
