@@ -170,7 +170,7 @@
           const person = byId(db.tenants, t.tenantId);
           return `<div class="card"><div class="item"><div><p>${esc(person ? person.name : "租客")} · ${hkd(t.rent)}</p><p class="sub">${esc(home ? home.name : "")} · ${esc(t.start)} 至 ${esc(t.end)}</p></div><div><button type="button" class="ghost" data-action="edit-lease" data-id="${t.id}">修改</button><button type="button" class="danger" data-action="del-lease" data-id="${t.id}">結束</button></div></div><div data-papers="${t.id}"></div></div>`;
         }).join("") || `<p class="sub">尚未有租約。</p>`;
-        return `<form data-kind="lease"><label>物業<select name="propertyId">${opts}</select></label><label>租客姓名<input name="tenant" required value="${esc(who ? who.name : "")}"></label><label>電話<input name="phone" value="${esc(who ? who.phone : "")}"></label><label>月租（HK$）<input name="rent" inputmode="numeric" required value="${editing ? editing.rent : ""}"></label><label>開始<input name="start" type="date" required value="${editing ? editing.start : ""}"></label><label>結束<input name="end" type="date" required value="${editing ? editing.end : ""}"></label><label>每月交租日<input name="dueDay" inputmode="numeric" value="${editing ? editing.dueDay : 1}"></label><button class="primary" type="submit">${editing ? "儲存修改" : "新增租約"}</button>${editing ? `<button type="button" class="ghost" data-action="cancel-lease">取消</button>` : ""}</form>${list}`;
+        return `<form data-kind="lease"><label>物業<select name="propertyId">${opts}</select></label><label>租客姓名<input name="tenant" required value="${esc(who ? who.name : "")}"></label><label>電話<input name="phone" value="${esc(who ? who.phone : "")}"></label><label>月租（HK$）<input name="rent" inputmode="numeric" required value="${editing ? editing.rent : ""}"></label><label>按金（HK$）<input name="deposit" inputmode="numeric" value="${editing ? editing.deposit : ""}" placeholder="留空則為兩個月租金"></label><label>開始<input name="start" type="date" required value="${editing ? editing.start : ""}"></label><label>結束<input name="end" type="date" required value="${editing ? editing.end : ""}"></label><label>每月交租日<input name="dueDay" inputmode="numeric" value="${editing ? editing.dueDay : 1}"></label><button class="primary" type="submit">${editing ? "儲存修改" : "新增租約"}</button>${editing ? `<button type="button" class="ghost" data-action="cancel-lease">取消</button>` : ""}</form>${list}`;
       },
       pay() {
         const opts = db.tenancies.map((t) => {
@@ -249,6 +249,7 @@
       }
       if (kind === "lease") {
         const rent = Number(data.rent) || 0;
+        const deposit = String(data.deposit || "").trim() === "" ? rent * 2 : Number(data.deposit) || 0;
         const dueDay = Math.min(28, Math.max(1, Number(data.dueDay) || 1));
         const existing = editLeaseId ? byId(db.tenancies, editLeaseId) : null;
         if (existing) {
@@ -258,7 +259,7 @@
           existing.start = data.start;
           existing.end = data.end;
           existing.rent = rent;
-          existing.deposit = rent * 2;
+          existing.deposit = deposit;
           existing.dueDay = dueDay;
           db.payments.forEach((p) => {
             if (p.tenancyId !== existing.id || p.paidAmount > 0) return;
@@ -269,7 +270,7 @@
         } else {
           const tenantId = uid("t");
           db.tenants.unshift({ id: tenantId, name: data.tenant.trim(), phone: data.phone.trim(), email: "", notes: "" });
-          const tenancy = { id: uid("tn"), propertyId: data.propertyId, tenantId, start: data.start, end: data.end, rent, deposit: rent * 2, dueDay, stamped: false, active: true };
+          const tenancy = { id: uid("tn"), propertyId: data.propertyId, tenantId, start: data.start, end: data.end, rent, deposit, dueDay, stamped: false, active: true };
           db.tenancies.unshift(tenancy);
           ensureCharge(tenancy);
         }
@@ -400,7 +401,7 @@
         try {
           if (window.Android && Android.listPhotos) rows = JSON.parse(Android.listPhotos(id) || "[]");
         } catch (e) { rows = []; }
-        box.innerHTML = `<p class="sub">續約可以再上傳，舊相片會保留。</p>${paperControls(id, "lease", "租約文件")}${paperControls(id, "stamp", "釐印")}`;
+        box.innerHTML = `<p class="sub">續約可以再上傳，舊相片會保留。</p>${paperControls(id, "lease", "租約文件")}${paperControls(id, "stamp", "釐印")}${paperControls(id, "deposit", "按金紀錄")}`;
         rows.forEach((row) => {
           const src = window.Android && Android.loadPhoto ? Android.loadPhoto(row.id) : "";
           const slot = box.querySelector(`[data-row="${id}-${row.kind}"]`);

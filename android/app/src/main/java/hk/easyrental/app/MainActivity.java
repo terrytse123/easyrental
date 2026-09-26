@@ -42,7 +42,7 @@ import java.util.Locale;
 
 public class MainActivity extends Activity {
     private static final String HOME = "https://easyrentalhk.vercel.app/";
-    private static final String LOCAL = "file:///android_asset/local/index.html?v=11";
+    private static final String LOCAL = "file:///android_asset/local/index.html?v=12";
 
     private WebView webView;
     private View chooser;
@@ -307,7 +307,10 @@ public class MainActivity extends Activity {
                     JSONObject row = new JSONObject();
                     row.put("id", id);
                     row.put("tenancyId", tenancyId);
-                    row.put("kind", "stamp".equals(kind) ? "stamp" : "lease");
+                    String stored = "lease";
+                    if ("stamp".equals(kind)) stored = "stamp";
+                    else if ("deposit".equals(kind)) stored = "deposit";
+                    row.put("kind", stored);
                     row.put("created", new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date()));
                     list.put(row);
                     writePhotoIndex(list);

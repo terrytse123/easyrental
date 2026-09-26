@@ -20,7 +20,7 @@ export function LeasePapers({ tenancyId }: { tenancyId: string }) {
     reload();
   }, [tenancyId]);
 
-  async function upload(kind: "lease" | "stamp", list: FileList | null) {
+  async function upload(kind: "lease" | "stamp" | "deposit", list: FileList | null) {
     if (!list?.length) return;
     setError("");
     try {
@@ -62,6 +62,16 @@ export function LeasePapers({ tenancyId }: { tenancyId: string }) {
         title={t(lang, "stampPapers")}
         files={(files ?? []).filter((file) => file.kind === "stamp")}
         onUpload={(list) => void upload("stamp", list)}
+        onRemove={(id) => void remove(id)}
+        onOpen={setOpen}
+        take={t(lang, "takePhoto")}
+        album={t(lang, "fromAlbum")}
+        removeLabel={t(lang, "delete")}
+      />
+      <PaperGroup
+        title={t(lang, "depositPapers")}
+        files={(files ?? []).filter((file) => file.kind === "deposit")}
+        onUpload={(list) => void upload("deposit", list)}
         onRemove={(id) => void remove(id)}
         onOpen={setOpen}
         take={t(lang, "takePhoto")}

@@ -6,13 +6,13 @@ import { getSql } from "@/lib/db";
 export type LeaseFile = {
   id: string;
   tenancyId: string;
-  kind: "lease" | "stamp";
+  kind: "lease" | "stamp" | "deposit";
   created: string;
   payload: string;
 };
 
-function asKind(value: string): "lease" | "stamp" {
-  if (value === "lease" || value === "stamp") return value;
+function asKind(value: string): "lease" | "stamp" | "deposit" {
+  if (value === "lease" || value === "stamp" || value === "deposit") return value;
   throw new Error("bad kind");
 }
 
@@ -38,13 +38,16 @@ export const listLeaseFiles = createServerFn({ method: "POST" })
        order by created_at`,
       [context.userId, tenancyId],
     );
-    return rows.map((row) => ({
-      id: row.id,
-      tenancyId,
-      kind: row.kind === "stamp" ? "stamp" : "lease",
-      created: row.created,
-      payload: row.payload,
-    })) satisfies LeaseFile[];
+    return rows.map((row) => {
+      const kind: LeaseFile["kind"] = row.kind === "stamp" ? "stamp" : row.kind === "deposit" ? "deposit" : "lease";
+      return {
+        id: row.id,
+        tenancyId,
+        kind,
+        created: row.created,
+        payload: row.payload,
+      };
+    });
   });
 
 export const addLeaseFile = createServerFn({ method: "POST" })

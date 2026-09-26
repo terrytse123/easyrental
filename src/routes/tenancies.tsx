@@ -245,6 +245,7 @@ function LeaseForm({
             <TextInput type="number" min={0} value={deposit} onChange={(e) => setDeposit(Number(e.target.value))} />
           </Field>
         </div>
+        <p className="text-sm text-muted">{t(lang, "depositHint")}</p>
         <Field label={t(lang, "dueDay")}>
           <TextInput
             type="number"
