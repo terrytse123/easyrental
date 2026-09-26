@@ -59,6 +59,13 @@ export function verificationLetter(code: string): { subject: string; text: strin
   };
 }
 
+export function resetLetter(code: string): { subject: string; text: string } {
+  return {
+    subject: "香港租租 重設密碼驗證碼",
+    text: `你的香港租租重設密碼驗證碼是 ${code}\n\n請於 10 分鐘內在重設密碼頁輸入。如非你本人申請，請忽略這封電郵。\n`,
+  };
+}
+
 function readCode(socket: Socket): Promise<number> {
   return new Promise((resolve, reject) => {
     let buffer = "";
