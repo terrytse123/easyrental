@@ -1,4 +1,4 @@
-import type { Lang, Payment } from "./types";
+import type { DepositPaidStatus, Lang, Payment, Tenancy } from "./types";
 
 export function todayISO(d = new Date()) {
   const z = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
@@ -26,6 +26,17 @@ export function fmtDate(iso: string, lang: Lang) {
     month: "short",
     day: "numeric",
   }).format(date);
+}
+
+
+/** Compare 應收按金 vs 已收金額. Never treats missing paid amount as paid. */
+export function depositState(lease: Pick<Tenancy, "deposit" | "depositPaidAmount">): DepositPaidStatus {
+  const owed = lease.deposit;
+  const paid = lease.depositPaidAmount ?? 0;
+  if (paid <= 0) return "unpaid";
+  if (owed > 0 && paid >= owed) return "paid";
+  if (paid > 0 && (owed <= 0 || paid < owed)) return "partial";
+  return "unpaid";
 }
 
 export function paymentState(p: Payment, today = todayISO()): "paid" | "partial" | "overdue" | "due" {
