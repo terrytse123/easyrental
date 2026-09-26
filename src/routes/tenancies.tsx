@@ -13,7 +13,7 @@ import {
   Sheet,
   TextInput,
 } from "@/components/rental/ui";
-import { daysUntil, fmtDate, hkd } from "@/lib/rental/format";
+import { daysUntil, depositState, fmtDate, hkd } from "@/lib/rental/format";
 import { t } from "@/lib/rental/i18n";
 import { useRental } from "@/lib/rental/store";
 import type { Tenancy, Tenant } from "@/lib/rental/types";
@@ -50,6 +50,7 @@ function TenanciesPage() {
           const property = properties.find((p) => p.id === lease.propertyId);
           const tenant = tenants.find((p) => p.id === lease.tenantId);
           const left = daysUntil(lease.end);
+          const dep = depositState(lease);
           return (
             <li key={lease.id} className="rounded-card border border-line bg-card p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -60,11 +61,23 @@ function TenanciesPage() {
                 <div className="flex flex-wrap gap-2">
                   <Pill tone={lease.active ? "jade" : "ink"}>{lease.active ? t(lang, "active") : t(lang, "ended")}</Pill>
                   <Pill tone={lease.stamped ? "brass" : "clay"}>{lease.stamped ? t(lang, "stamped") : t(lang, "unstamped")}</Pill>
+                  <Pill tone={dep === "paid" ? "jade" : dep === "partial" ? "brass" : "clay"}>
+                    {dep === "paid"
+                      ? t(lang, "depositPaid")
+                      : dep === "partial"
+                        ? t(lang, "depositPartial")
+                        : t(lang, "depositUnpaid")}
+                  </Pill>
                 </div>
               </div>
-              <div className="mt-4 grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
+              <div className="mt-4 grid grid-cols-2 gap-3 text-sm md:grid-cols-3 lg:grid-cols-6">
                 <Meta label={t(lang, "rent")} value={hkd(lease.rent, lang)} />
-                <Meta label={t(lang, "deposit")} value={hkd(lease.deposit, lang)} />
+                <Meta label={t(lang, "depositOwed")} value={hkd(lease.deposit, lang)} />
+                <Meta label={t(lang, "depositPaidAmount")} value={hkd(lease.depositPaidAmount ?? 0, lang)} />
+                <Meta
+                  label={t(lang, "depositPaidOn")}
+                  value={lease.depositPaidOn ? fmtDate(lease.depositPaidOn, lang) : "—"}
+                />
                 <Meta label={t(lang, "start")} value={fmtDate(lease.start, lang)} />
                 <Meta
                   label={t(lang, "end")}
@@ -154,6 +167,8 @@ function LeaseForm({
     end: string;
     rent: number;
     deposit: number;
+    depositPaidAmount: number;
+    depositPaidOn?: string;
     dueDay: number;
     stamped: boolean;
     active: boolean;
@@ -168,6 +183,8 @@ function LeaseForm({
   const [end, setEnd] = useState(initial?.end ?? "2028-09-30");
   const [rent, setRent] = useState(initial?.rent ?? properties[0]?.rent ?? 15000);
   const [deposit, setDeposit] = useState(initial?.deposit ?? (properties[0]?.rent ?? 15000) * 2);
+  const [depositPaidAmount, setDepositPaidAmount] = useState(initial?.depositPaidAmount ?? 0);
+  const [depositPaidOn, setDepositPaidOn] = useState(initial?.depositPaidOn ?? "");
   const [dueDay, setDueDay] = useState(initial?.dueDay ?? 1);
   const [stamped, setStamped] = useState(initial?.stamped ?? false);
 
@@ -184,6 +201,8 @@ function LeaseForm({
             end,
             rent,
             deposit,
+            depositPaidAmount: Math.max(0, depositPaidAmount),
+            ...(depositPaidOn ? { depositPaidOn } : { depositPaidOn: undefined }),
             dueDay,
             stamped,
             active: initial?.active ?? true,
@@ -241,11 +260,25 @@ function LeaseForm({
               }}
             />
           </Field>
-          <Field label={t(lang, "deposit")}>
+          <Field label={t(lang, "depositOwed")}>
             <TextInput type="number" min={0} value={deposit} onChange={(e) => setDeposit(Number(e.target.value))} />
           </Field>
         </div>
         <p className="text-sm text-muted">{t(lang, "depositHint")}</p>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label={t(lang, "depositPaidAmount")}>
+            <TextInput
+              type="number"
+              min={0}
+              value={depositPaidAmount}
+              onChange={(e) => setDepositPaidAmount(Number(e.target.value))}
+            />
+          </Field>
+          <Field label={t(lang, "depositPaidOn")}>
+            <TextInput type="date" value={depositPaidOn} onChange={(e) => setDepositPaidOn(e.target.value)} />
+          </Field>
+        </div>
+        <p className="text-sm text-muted">{t(lang, "depositPaidHint")}</p>
         <Field label={t(lang, "dueDay")}>
           <TextInput
             type="number"
