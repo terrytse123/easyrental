@@ -29,6 +29,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const loadError = useRental((s) => s.loadError);
   const saveState = useRental((s) => s.saveState);
   const loadLedger = useRental((s) => s.loadLedger);
+  const reloadLedger = useRental((s) => s.reloadLedger);
   const path = useRouterState({ select: (s) => s.location.pathname });
   const { user, isPending } = useCurrentUserState();
 
@@ -153,6 +154,18 @@ export function Shell({ children }: { children: ReactNode }) {
           </header>
           {saveState === "error" && (
             <p className="bg-clay-soft px-4 py-2 text-sm text-clay md:px-8">{t(lang, "saveFailed")}</p>
+          )}
+          {saveState === "conflict" && (
+            <div className="flex flex-wrap items-center justify-between gap-2 bg-clay-soft px-4 py-2 text-sm text-clay md:px-8">
+              <p>{t(lang, "saveConflict")}</p>
+              <button
+                type="button"
+                onClick={() => void reloadLedger()}
+                className="min-h-11 rounded-full bg-ink px-4 text-sm font-semibold text-paper"
+              >
+                {t(lang, "reloadLedger")}
+              </button>
+            </div>
           )}
           <main className="flex-1 px-4 pb-28 pt-5 md:px-8 md:pb-12">{children}</main>
         </div>
