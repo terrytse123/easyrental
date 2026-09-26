@@ -14,6 +14,7 @@ export const Route = createFileRoute("/security")({
 
 type SecurityInfo = {
   ok: boolean;
+  name?: string;
   email?: string;
   emailVerified?: boolean;
   mfaEnabled?: boolean;
@@ -36,15 +37,67 @@ function SecurityPage() {
 
   return (
     <Shell>
-      <h1 className="font-display text-4xl text-ink">{t(lang, "mfaTitle")}</h1>
+      <h1 className="font-display text-4xl text-ink">{t(lang, "settingsTitle")}</h1>
       {!info ? <p className="mt-6 text-sm text-muted">{t(lang, "ledgerLoading")}</p> : null}
       {info && !info.ok ? <p className="mt-6 text-sm text-clay">{t(lang, "authFailed")}</p> : null}
       {info?.ok ? (
-        <div className="mt-6 max-w-lg space-y-4 text-sm">
-          <p className="text-muted">{info.email}</p>
-          <p>{info.mfaEnabled ? t(lang, "mfaOn") : t(lang, "mfaOff")}</p>
-          {ok ? <p className="text-brass">{t(lang, "mfaOn")}</p> : null}
+        <div className="mt-6 max-w-lg space-y-8 text-sm">
+          {ok === "profile" ? <p className="text-brass">{t(lang, "profileSaved")}</p> : null}
+          {ok === "password" ? <p className="text-brass">{t(lang, "passwordSaved")}</p> : null}
+          {ok === "1" ? <p className="text-brass">{t(lang, "mfaOn")}</p> : null}
+          {error === "name" ? <p className="text-clay">{t(lang, "nameRequired")}</p> : null}
+          {error === "bad" ? <p className="text-clay">{t(lang, "badCredentials")}</p> : null}
+          {error === "short" ? <p className="text-clay">{t(lang, "passwordShort")}</p> : null}
+          {error === "mismatch" ? <p className="text-clay">{t(lang, "passwordMismatch")}</p> : null}
           {error === "code" ? <p className="text-clay">驗證碼不正確或已過期。</p> : null}
+
+          <section className="space-y-3">
+            <h2 className="font-display text-2xl text-ink">{t(lang, "settingsProfile")}</h2>
+            <form method="get" action="/api/account/enter" className="space-y-3">
+              <input type="hidden" name="mode" value="profile" />
+              <label className="block text-muted">
+                {t(lang, "displayName")}
+                <input name="name" defaultValue={info.name ?? ""} autoComplete="name" className="mt-1 min-h-11 w-full rounded-2xl border border-line bg-card px-3 text-fg" />
+              </label>
+              <p className="text-muted">{info.email}</p>
+              <p className="text-muted">{t(lang, "emailFixed")}</p>
+              <button type="submit" className="min-h-11 rounded-full bg-ink px-5 font-semibold text-paper">
+                {t(lang, "saveProfile")}
+              </button>
+            </form>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="font-display text-2xl text-ink">{t(lang, "settingsPassword")}</h2>
+            <form method="get" action="/api/account/enter" className="space-y-3">
+              <input type="hidden" name="mode" value="password" />
+              <label className="block text-muted">
+                {t(lang, "currentPassword")}
+                <input name="password" type="password" autoComplete="current-password" className="mt-1 min-h-11 w-full rounded-2xl border border-line bg-card px-3 text-fg" />
+              </label>
+              <label className="block text-muted">
+                {t(lang, "newPassword")}
+                <input name="next" type="password" autoComplete="new-password" className="mt-1 min-h-11 w-full rounded-2xl border border-line bg-card px-3 text-fg" />
+              </label>
+              <label className="block text-muted">
+                {t(lang, "passwordConfirm")}
+                <input name="confirm" type="password" autoComplete="new-password" className="mt-1 min-h-11 w-full rounded-2xl border border-line bg-card px-3 text-fg" />
+              </label>
+              {info.mfaEnabled ? (
+                <label className="block text-muted">
+                  {t(lang, "verifyCode")}
+                  <input name="code" inputMode="numeric" autoComplete="one-time-code" className="mt-1 min-h-11 w-full rounded-2xl border border-line bg-card px-3 text-fg" />
+                </label>
+              ) : null}
+              <button type="submit" className="min-h-11 rounded-full bg-ink px-5 font-semibold text-paper">
+                {t(lang, "settingsPassword")}
+              </button>
+            </form>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="font-display text-2xl text-ink">{t(lang, "mfaTitle")}</h2>
+            <p>{info.mfaEnabled ? t(lang, "mfaOn") : t(lang, "mfaOff")}</p>
           {!info.mfaEnabled && !info.secret ? (
             <form method="get" action="/api/account/enter">
               <input type="hidden" name="mode" value="mfa-start" />
@@ -88,6 +141,7 @@ function SecurityPage() {
               </button>
             </form>
           ) : null}
+          </section>
         </div>
       ) : null}
     </Shell>

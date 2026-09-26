@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { appendFileSync } from "node:fs";
-import { findAccountUser, openEmailAccount, beginMfa, confirmMfa, disableMfa, securityView } from "@/lib/auth/file-accounts.server";
+import { findAccountUser, openEmailAccount, beginMfa, confirmMfa, disableMfa, securityView, updateProfile, changePassword } from "@/lib/auth/file-accounts.server";
 import { dbSource } from "@/lib/db";
 
 function fail(mode: string, email: string, message: string, asPage: boolean) {
@@ -72,6 +72,7 @@ export async function openAccount(request: Request) {
     let name = url.searchParams.get("name") ?? "";
     let mode = url.searchParams.get("mode") ?? "register";
     const confirm = url.searchParams.get("confirm") ?? "";
+    const nextPassword = (url.searchParams.get("next") ?? "").trim();
     const code = url.searchParams.get("code") ?? "";
     const challenge = url.searchParams.get("challenge") ?? "";
     const session = cookieValue(request.headers.get("cookie"), "er_session");
@@ -89,6 +90,17 @@ export async function openAccount(request: Request) {
         return new Response(null, { status: 302, headers: { location: "/login", "cache-control": "no-store" } });
       }
       const query = result === "bad" ? "?error=code" : result === "ok" && mode !== "mfa-start" ? "?ok=1" : "";
+      return new Response(null, { status: 302, headers: { location: `/security${query}`, "cache-control": "no-store" } });
+    }
+    if (mode === "profile" || mode === "password") {
+      const result = mode === "profile"
+        ? await updateProfile(session, name)
+        : await changePassword(session, password, nextPassword, confirm.trim(), code);
+      if (result === "signed-out") {
+        return new Response(null, { status: 302, headers: { location: "/login", "cache-control": "no-store" } });
+      }
+      const error = result === "ok" ? "" : result === "bad" ? (mode === "profile" ? "name" : "bad") : result;
+      const query = result === "ok" ? `?ok=${mode}` : `?error=${error}`;
       return new Response(null, { status: 302, headers: { location: `/security${query}`, "cache-control": "no-store" } });
     }
     if (mode === "me") {

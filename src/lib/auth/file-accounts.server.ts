@@ -242,6 +242,7 @@ export async function openEmailAccount(input: {
 }
 
 export type SecurityView = {
+  name: string;
   email: string;
   emailVerified: boolean;
   mfaEnabled: boolean;
@@ -273,6 +274,7 @@ export async function securityView(token: string | null | undefined): Promise<Se
     ? await QRCode.toDataURL(otpauth, { margin: 1, width: 320, errorCorrectionLevel: "M" })
     : null;
   return {
+    name: user.name,
     email: user.email,
     emailVerified: user.email_verified,
     mfaEnabled: user.mfa_enabled,
@@ -280,6 +282,34 @@ export async function securityView(token: string | null | undefined): Promise<Se
     otpauth,
     qr,
   };
+}
+
+export async function updateProfile(token: string | null | undefined, name: string): Promise<"ok" | "bad" | "signed-out"> {
+  const user = await userFromToken(token);
+  if (!user) return "signed-out";
+  const display = name.trim();
+  if (!display || display.length > 40) return "bad";
+  const sql = await getSql();
+  await sql.query(`update app_users set name = $1 where id = $2`, [display, user.id]);
+  return "ok";
+}
+
+export async function changePassword(
+  token: string | null | undefined,
+  current: string,
+  next: string,
+  confirm: string,
+  code: string,
+): Promise<"ok" | "bad" | "short" | "mismatch" | "code" | "signed-out"> {
+  const user = await userFromToken(token);
+  if (!user) return "signed-out";
+  if (!checkPassword(current, user.password_hash)) return "bad";
+  if (next.length < 8 || next.length > 200) return "short";
+  if (next !== confirm) return "mismatch";
+  if (user.mfa_enabled && (!user.totp_secret || !verifyTotp(user.totp_secret, code))) return "code";
+  const sql = await getSql();
+  await sql.query(`update app_users set password_hash = $1 where id = $2`, [hashPassword(next), user.id]);
+  return "ok";
 }
 
 export async function beginMfa(token: string | null | undefined): Promise<SecurityView | null> {
