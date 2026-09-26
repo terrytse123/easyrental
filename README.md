@@ -14,7 +14,7 @@ Supabase 的 anon Data API 已鎖；應用只走伺服器端資料庫連線。
 
 ## 功能（現況）
 
-- 物業、租客、租約
+- 物業、租客、租約（含應收／已收按金、收款日）
 - 收租紀錄（期數、已付金額、到期日、付款方式如 FPS／銀行／PayMe 等）
 - 維修工單
 - 租約／釐印／按金相關文件上傳
@@ -47,4 +47,4 @@ Supabase 的 anon Data API 已鎖；應用只走伺服器端資料庫連線。
 
 ## English (short)
 
-Cloud landlord ledger on Postgres/Supabase via `DATABASE_URL`. Multi-device stale saves require reload. Features: properties, tenancies, rent collection, repairs, lease/stamp files, bilingual UI, desk. Auth: email + OTP, optional MFA, session cookie. JSON backup on `/guide` is secondary. Live: https://easyrentalhk.vercel.app. Renewal email only (~90 days before lease end)—no overdue-rent or stamp-duty email alerts yet.
+Cloud landlord ledger on Postgres/Supabase via `DATABASE_URL`. Multi-device stale saves require reload. Features: properties, tenancies (deposit owed vs received), rent collection, repairs, lease/stamp files, bilingual UI, desk. Auth: email + OTP, optional MFA, session cookie. JSON backup on `/guide` is secondary. Live: https://easyrentalhk.vercel.app. Renewal email only (~90 days before lease end)—no overdue-rent or stamp-duty email alerts yet.
