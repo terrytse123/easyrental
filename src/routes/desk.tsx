@@ -4,7 +4,7 @@ import { Shell } from "@/components/rental/shell";
 import { Money, Pill } from "@/components/rental/ui";
 import { DISTRICTS } from "@/lib/rental/hk";
 import { t } from "@/lib/rental/i18n";
-import { daysUntil, hkd, monthKey, paymentState } from "@/lib/rental/format";
+import { daysUntil, hkd, monthKey, paymentState, rentNotice, whatsappHref } from "@/lib/rental/format";
 import { useRental } from "@/lib/rental/store";
 
 export const Route = createFileRoute("/desk")({ component: Desk });
@@ -114,6 +114,15 @@ function Desk() {
               const tenant = tenants.find((x) => x.id === tenancy?.tenantId);
               const state = paymentState(p);
               const district = DISTRICTS.find((d) => d.id === property?.district);
+              const notice = rentNotice({
+                lang,
+                tenant: tenant?.name || (lang === "zh" ? "租客" : "there"),
+                property: property?.name || (lang === "zh" ? "單位" : "the flat"),
+                period: p.period,
+                amount: hkd(Math.max(p.amount - p.paidAmount, 0), lang),
+                due: p.dueDate,
+              });
+              const whatsapp = state !== "paid" && tenant?.phone ? whatsappHref(tenant.phone, notice) : null;
               return (
                 <li key={p.id} className="rounded-2xl border border-line bg-card px-4 py-3">
                   <div className="flex items-start justify-between gap-3">
@@ -130,6 +139,11 @@ function Desk() {
                       <Pill tone={state === "overdue" ? "clay" : "brass"}>
                         {state === "overdue" ? t(lang, "statusOverdue") : p.dueDate.slice(5)}
                       </Pill>
+                      {whatsapp ? (
+                        <a href={whatsapp} target="_blank" rel="noreferrer" className="mt-1 block text-sm font-semibold text-brass">
+                          {t(lang, "whatsapp")}
+                        </a>
+                      ) : null}
                     </div>
                   </div>
                 </li>

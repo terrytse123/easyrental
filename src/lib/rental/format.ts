@@ -41,6 +41,29 @@ export function daysUntil(iso: string, today = todayISO()) {
   return Math.round((b.getTime() - a.getTime()) / 86400000);
 }
 
+export function whatsappHref(phone: string, text: string) {
+  let digits = phone.replace(/\D/g, "");
+  if (digits.startsWith("852") && digits.length === 11) {
+    /* already a Hong Kong mobile number */
+  } else if (digits.length === 8) digits = `852${digits}`;
+  if (digits.length < 8 || digits.length > 15) return null;
+  return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
+}
+
+export function rentNotice(input: {
+  lang: "zh" | "en";
+  tenant: string;
+  property: string;
+  period: string;
+  amount: string;
+  due: string;
+}) {
+  if (input.lang === "zh") {
+    return `${input.tenant}你好，${input.property} ${input.period} 的租金 ${input.amount} 將於 ${input.due} 到期，請安排繳付。謝謝。`;
+  }
+  return `Hello ${input.tenant}, rent of ${input.amount} for ${input.property} (${input.period}) is due on ${input.due}. Please arrange payment. Thank you.`;
+}
+
 export function uid(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 8)}${Date.now().toString(36).slice(-3)}`;
 }

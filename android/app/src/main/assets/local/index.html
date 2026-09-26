@@ -65,6 +65,12 @@
       return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
     }
     function hkd(n) { return "HK$" + Math.round(Number(n) || 0).toLocaleString("zh-HK"); }
+    function waHref(phone, text) {
+      let digits = String(phone || "").replace(/\D/g, "");
+      if (digits.length === 8) digits = "852" + digits;
+      if (digits.length < 8 || digits.length > 15) return "";
+      return "https://wa.me/" + digits + "?text=" + encodeURIComponent(text);
+    }
     function esc(s) {
       return String(s == null ? "" : s)
         .replace(/&/g, "\u0026amp;")
@@ -154,7 +160,10 @@
           const home = lease && byId(db.properties, lease.propertyId);
           const who = lease && byId(db.tenants, lease.tenantId);
           const paid = p.paidAmount >= p.amount;
-          return `<div class="card item"><div><p>${esc(home ? home.name : "")} · ${esc(p.period)}</p><p class="${paid ? "ok" : "over"}">${esc(who ? who.name : "")} · ${paid ? "已收" : "未收"} ${hkd(p.amount)}</p></div>${paid ? "" : `<button type="button" data-action="paid" data-id="${p.id}">記一筆已收</button>`}</div>`;
+          const phone = who ? who.phone : "";
+          const msg = (who ? who.name : "租客") + "你好，" + (home ? home.name : "單位") + " " + p.period + " 的租金 " + hkd(p.amount) + " 將於 " + p.dueDate + " 到期，請安排繳付。謝謝。";
+          const wa = paid ? "" : waHref(phone, msg);
+          return `<div class="card item"><div><p>${esc(home ? home.name : "")} · ${esc(p.period)}</p><p class="${paid ? "ok" : "over"}">${esc(who ? who.name : "")} · ${paid ? "已收" : "未收"} ${hkd(p.amount)}</p></div><div>${paid ? "" : `<button type="button" data-action="paid" data-id="${p.id}">記一筆已收</button>`}${wa ? `<a class="ghost" style="display:inline-flex;align-items:center;margin-left:8px" href="${esc(wa)}">WhatsApp</a>` : ""}</div></div>`;
         }).join("") || `<p class="sub">未有收款。新增租約後會生成本月租金。</p>`;
         return `<button type="button" class="ghost" data-action="charges">生成本月未開的租金</button>${list}<form id="pay-form" class="hide" data-kind="paid"><input type="hidden" name="id"><label>方式<select name="method">${METHODS.map(([v, label]) => `<option value="${v}">${label}</option>`).join("")}</select></label><label>參考編號<input name="ref"></label><button class="primary" type="submit">儲存</button></form>`;
       },
