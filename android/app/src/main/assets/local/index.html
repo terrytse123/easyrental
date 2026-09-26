@@ -126,6 +126,7 @@
       app.innerHTML = views[tab]();
       app.querySelectorAll("[data-action]").forEach((el) => el.addEventListener("click", onAction));
       app.querySelectorAll("form").forEach((form) => form.addEventListener("submit", onSubmit));
+      try { fillPapers(); } catch (e) { /* photos are optional */ }
     }
 
     const views = {
@@ -165,7 +166,7 @@
         const list = db.tenancies.map((t) => {
           const home = byId(db.properties, t.propertyId);
           const person = byId(db.tenants, t.tenantId);
-          return `<div class="item card"><div><p>${esc(person ? person.name : "租客")} · ${hkd(t.rent)}</p><p class="sub">${esc(home ? home.name : "")} · ${esc(t.start)} 至 ${esc(t.end)}</p></div><div><button type="button" class="ghost" data-action="edit-lease" data-id="${t.id}">修改</button><button type="button" class="danger" data-action="del-lease" data-id="${t.id}">結束</button></div></div>`;
+          return `<div class="card"><div class="item"><div><p>${esc(person ? person.name : "租客")} · ${hkd(t.rent)}</p><p class="sub">${esc(home ? home.name : "")} · ${esc(t.start)} 至 ${esc(t.end)}</p></div><div><button type="button" class="ghost" data-action="edit-lease" data-id="${t.id}">修改</button><button type="button" class="danger" data-action="del-lease" data-id="${t.id}">結束</button></div></div><div data-papers="${t.id}"></div></div>`;
         }).join("") || `<p class="sub">尚未有租約。</p>`;
         return `<form data-kind="lease"><label>物業<select name="propertyId">${opts}</select></label><label>租客姓名<input name="tenant" required value="${esc(who ? who.name : "")}"></label><label>電話<input name="phone" value="${esc(who ? who.phone : "")}"></label><label>月租（HK$）<input name="rent" inputmode="numeric" required value="${editing ? editing.rent : ""}"></label><label>開始<input name="start" type="date" required value="${editing ? editing.start : ""}"></label><label>結束<input name="end" type="date" required value="${editing ? editing.end : ""}"></label><label>每月交租日<input name="dueDay" inputmode="numeric" value="${editing ? editing.dueDay : 1}"></label><button class="primary" type="submit">${editing ? "儲存修改" : "新增租約"}</button>${editing ? `<button type="button" class="ghost" data-action="cancel-lease">取消</button>` : ""}</form>${list}`;
       },
@@ -318,7 +319,86 @@
       render();
     }
 
+    function compressFile(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error("read"));
+        reader.onload = () => {
+          const img = new Image();
+          img.onerror = () => reject(new Error("image"));
+          img.onload = () => {
+            const max = 1400;
+            const scale = Math.min(1, max / Math.max(img.width, img.height));
+            const canvas = document.createElement("canvas");
+            canvas.width = Math.max(1, Math.round(img.width * scale));
+            canvas.height = Math.max(1, Math.round(img.height * scale));
+            canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+            let quality = 0.72;
+            let data = canvas.toDataURL("image/jpeg", quality);
+            while (data.length > 420000 && quality > 0.4) {
+              quality -= 0.12;
+              data = canvas.toDataURL("image/jpeg", quality);
+            }
+            resolve(data);
+          };
+          img.src = String(reader.result);
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+    function paperControls(id, kind, title) {
+      return `<p style="margin:8px 0 4px">${title}</p><label class="ghost" style="display:inline-flex;align-items:center;margin-right:8px">拍照<input type="file" accept="image/*" capture="environment" hidden data-file="1" data-kind="${kind}" data-id="${id}"></label><label class="ghost" style="display:inline-flex;align-items:center">相簿<input type="file" accept="image/*" multiple hidden data-file="1" data-kind="${kind}" data-id="${id}"></label><div data-row="${id}-${kind}"></div>`;
+    }
+    function fillPapers() {
+      document.querySelectorAll("[data-papers]").forEach((box) => {
+        const id = box.getAttribute("data-papers");
+        let rows = [];
+        try {
+          if (window.Android && Android.listPhotos) rows = JSON.parse(Android.listPhotos(id) || "[]");
+        } catch (e) { rows = []; }
+        box.innerHTML = `<p class="sub">續約可以再上傳，舊相片會保留。</p>${paperControls(id, "lease", "租約文件")}${paperControls(id, "stamp", "釐印")}`;
+        rows.forEach((row) => {
+          const src = window.Android && Android.loadPhoto ? Android.loadPhoto(row.id) : "";
+          const slot = box.querySelector(`[data-row="${id}-${row.kind}"]`);
+          if (!slot || !src) return;
+          const wrap = document.createElement("div");
+          wrap.style.cssText = "display:inline-block;margin:8px 8px 0 0";
+          const img = document.createElement("img");
+          img.src = src;
+          img.alt = "";
+          img.style.cssText = "width:96px;height:96px;object-fit:cover;border-radius:12px";
+          const del = document.createElement("button");
+          del.type = "button";
+          del.className = "danger";
+          del.textContent = "刪除";
+          del.dataset.action = "del-photo";
+          del.dataset.id = row.id;
+          wrap.append(img, del);
+          slot.append(wrap);
+        });
+      });
+    }
+
+    document.getElementById("app").addEventListener("click", (event) => {
+      const button = event.target.closest ? event.target.closest("[data-action='del-photo']") : null;
+      if (!button || !window.Android || !Android.deletePhoto) return;
+      Android.deletePhoto(button.dataset.id);
+      fillPapers();
+    });
     document.getElementById("app").addEventListener("change", (event) => {
+      if (event.target.dataset && event.target.dataset.file) {
+        const input = event.target;
+        const files = Array.from(input.files || []);
+        input.value = "";
+        void (async () => {
+          for (const file of files) {
+            const data = await compressFile(file);
+            if (window.Android && Android.savePhoto) Android.savePhoto(uid("ph"), input.dataset.id, input.dataset.kind, data);
+          }
+          fillPapers();
+        })().catch(() => alert("相片未能儲存。"));
+        return;
+      }
       if (event.target.id !== "import-file" || !event.target.files[0]) return;
       const reader = new FileReader();
       reader.onload = () => {

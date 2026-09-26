@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { Shell } from "@/components/rental/shell";
+import { LeasePapers } from "@/components/rental/papers";
 import {
   DangerButton,
   Field,
@@ -80,6 +81,7 @@ function TenanciesPage() {
                 </GhostButton>
                 <DangerButton onClick={() => removeTenancy(lease.id)}>{t(lang, "delete")}</DangerButton>
               </div>
+              <LeasePapers tenancyId={lease.id} />
             </li>
           );
         })}
