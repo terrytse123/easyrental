@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DeskRouteImport } from './routes/desk'
 import { Route as GuideRouteImport } from './routes/guide'
+import { Route as IncomeRouteImport } from './routes/income'
 import { Route as LedgerRouteImport } from './routes/ledger'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PropertiesRouteImport } from './routes/properties'
@@ -35,6 +36,11 @@ const DeskRoute = DeskRouteImport.update({
 const GuideRoute = GuideRouteImport.update({
   id: '/guide',
   path: '/guide',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const IncomeRoute = IncomeRouteImport.update({
+  id: '/income',
+  path: '/income',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LedgerRoute = LedgerRouteImport.update({
@@ -87,6 +93,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/desk': typeof DeskRoute
   '/guide': typeof GuideRoute
+  '/income': typeof IncomeRoute
   '/ledger': typeof LedgerRoute
   '/login': typeof LoginRoute
   '/properties': typeof PropertiesRoute
@@ -101,6 +108,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/desk': typeof DeskRoute
   '/guide': typeof GuideRoute
+  '/income': typeof IncomeRoute
   '/ledger': typeof LedgerRoute
   '/login': typeof LoginRoute
   '/properties': typeof PropertiesRoute
@@ -116,6 +124,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/desk': typeof DeskRoute
   '/guide': typeof GuideRoute
+  '/income': typeof IncomeRoute
   '/ledger': typeof LedgerRoute
   '/login': typeof LoginRoute
   '/properties': typeof PropertiesRoute
@@ -132,6 +141,7 @@ export interface FileRouteTypes {
     | '/'
     | '/desk'
     | '/guide'
+    | '/income'
     | '/ledger'
     | '/login'
     | '/properties'
@@ -146,6 +156,7 @@ export interface FileRouteTypes {
     | '/'
     | '/desk'
     | '/guide'
+    | '/income'
     | '/ledger'
     | '/login'
     | '/properties'
@@ -160,6 +171,7 @@ export interface FileRouteTypes {
     | '/'
     | '/desk'
     | '/guide'
+    | '/income'
     | '/ledger'
     | '/login'
     | '/properties'
@@ -175,6 +187,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DeskRoute: typeof DeskRoute
   GuideRoute: typeof GuideRoute
+  IncomeRoute: typeof IncomeRoute
   LedgerRoute: typeof LedgerRoute
   LoginRoute: typeof LoginRoute
   PropertiesRoute: typeof PropertiesRoute
@@ -207,6 +220,13 @@ declare module '@tanstack/react-router' {
       path: '/guide'
       fullPath: '/guide'
       preLoaderRoute: typeof GuideRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/income': {
+      id: '/income'
+      path: '/income'
+      fullPath: '/income'
+      preLoaderRoute: typeof IncomeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/ledger': {
@@ -279,6 +299,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DeskRoute: DeskRoute,
   GuideRoute: GuideRoute,
+  IncomeRoute: IncomeRoute,
   LedgerRoute: LedgerRoute,
   LoginRoute: LoginRoute,
   PropertiesRoute: PropertiesRoute,

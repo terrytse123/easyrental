@@ -28,7 +28,7 @@
     .item p { margin: 2px 0; }
     .over { color: var(--clay); }
     .ok { color: #2f6b45; }
-    nav { position: sticky; bottom: 0; display: grid; grid-template-columns: repeat(5, 1fr); background: var(--card); border-top: 1px solid var(--line); }
+    nav { position: sticky; bottom: 0; display: grid; grid-template-columns: repeat(6, 1fr); background: var(--card); border-top: 1px solid var(--line); }
     nav button { border-radius: 0; background: transparent; color: var(--muted); min-height: 58px; font-size: 12px; }
     nav button.on { color: var(--brass); }
     .hide { display: none; }
@@ -46,6 +46,7 @@
     <button type="button" data-tab="homes">物業</button>
     <button type="button" data-tab="leases">租約</button>
     <button type="button" data-tab="pay">收款</button>
+    <button type="button" data-tab="net">收益</button>
     <button type="button" data-tab="fix">維修</button>
   </nav>
   <script>
@@ -193,6 +194,42 @@
           ? `<form data-kind="newpay"><label>租約<select name="tenancyId">${opts}</select></label><label>金額（HK$）<input name="amount" inputmode="numeric" required></label><label>付款月份<input name="period" type="month" required value="${monthKey()}"></label><label>收款日期<input name="paidDate" type="date" required value="${today()}"></label><label>方式<select name="method">${METHODS.map(([v, label]) => `<option value="${v}">${label}</option>`).join("")}</select></label><label>參考編號<input name="ref"></label><button class="primary" type="submit">新增收款</button></form>`
           : `<p>請先新增租約。</p>`;
         return `${add}<label>物業<select data-pay-property><option value="">全部物業</option>${homes}</select></label><button type="button" class="ghost" data-action="charges">生成本月未開的租金</button>${list}<form id="pay-form" class="hide" data-kind="paid"><input type="hidden" name="id"><label>收款日期<input name="paidDate" type="date" required value="${today()}"></label><label>方式<select name="method">${METHODS.map(([v, label]) => `<option value="${v}">${label}</option>`).join("")}</select></label><label>參考編號<input name="ref"></label><button class="primary" type="submit">儲存</button></form>`;
+      },
+      net() {
+        const rows = new Map();
+        const touch = (year, propertyId) => {
+          const key = year + "|" + propertyId;
+          if (!rows.has(key)) rows.set(key, { year, propertyId, rent: 0, repairs: 0 });
+          return rows.get(key);
+        };
+        db.payments.forEach((p) => {
+          const lease = byId(db.tenancies, p.tenancyId);
+          const year = String(p.period || "").slice(0, 4);
+          if (!lease || !/^\d{4}$/.test(year) || !(p.paidAmount > 0)) return;
+          touch(year, lease.propertyId).rent += p.paidAmount;
+        });
+        db.tickets.forEach((t) => {
+          const year = String(t.created || "").slice(0, 4);
+          if (!/^\d{4}$/.test(year) || !t.cost) return;
+          touch(year, t.propertyId).repairs += Number(t.cost) || 0;
+        });
+        const lines = Array.from(rows.values()).map((row) => {
+          const home = byId(db.properties, row.propertyId);
+          const holding = ((home && home.managementFee) || 0) + ((home && home.rates) || 0);
+          return { ...row, name: home ? home.name : "單位", holding: holding * 12, net: row.rent - row.repairs - holding * 12 };
+        }).sort((a, b) => b.year.localeCompare(a.year) || a.name.localeCompare(b.name, "zh-HK"));
+        if (!lines.length) return `<p class="sub">未有已收租金或維修，暫時未能計算。已收租金按付款月份計入該年，再減維修。</p>`;
+        let html = `<p class="sub">已收租金按付款月份計入該年，再減維修。管理費及差餉用每月金額乘 12。按金不算收入。</p>`;
+        let year = "";
+        lines.forEach((line) => {
+          if (line.year !== year) {
+            year = line.year;
+            const total = lines.filter((item) => item.year === year).reduce((sum, item) => sum + item.net, 0);
+            html += `<h2 style="margin:12px 0 4px">${esc(year)} · 合計 ${hkd(total)}</h2>`;
+          }
+          html += `<div class="card"><div class="item"><p>${esc(line.name)}</p><b class="${line.net < 0 ? "over" : ""}">${hkd(line.net)}</b></div><p class="sub">已收 ${hkd(line.rent)} · 維修 ${hkd(line.repairs)} · 管理費及差餉 ${hkd(line.holding)}</p></div>`;
+        });
+        return html;
       },
       fix() {
         if (!db.properties.length) return `<p>請先新增物業。</p>`;

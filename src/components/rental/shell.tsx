@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { BookOpen, Building2, Hammer, Home, Receipt, ScrollText } from "lucide-react";
+import { BookOpen, Building2, Hammer, Home, Receipt, ScrollText, Wallet } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
 import { RedirectToSignIn, UserButton } from "@/lib/auth/gates";
 import { authClient, getBearerToken, signOut } from "@/lib/auth/client";
@@ -12,6 +12,7 @@ const links = [
   { to: "/properties", key: "navProperties", icon: Building2 },
   { to: "/tenancies", key: "navTenancies", icon: ScrollText },
   { to: "/ledger", key: "navLedger", icon: Receipt },
+  { to: "/income", key: "navIncome", icon: Wallet },
   { to: "/repairs", key: "navRepairs", icon: Hammer },
 ] as const;
 
@@ -156,7 +157,7 @@ export function Shell({ children }: { children: ReactNode }) {
           <main className="flex-1 px-4 pb-28 pt-5 md:px-8 md:pb-12">{children}</main>
         </div>
       </div>
-      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-line bg-card md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-6 border-t border-line bg-card md:hidden">
         {links.map((item) => {
           const on = active(path, item.to);
           const Icon = item.icon;
