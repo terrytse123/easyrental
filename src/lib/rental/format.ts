@@ -28,6 +28,46 @@ export function fmtDate(iso: string, lang: Lang) {
   }).format(date);
 }
 
+const EN_MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+] as const;
+
+/** Display YYYY-MM as zh `2026年4月` / en `April 2026`. */
+export function formatYm(lang: Lang, ym: string) {
+  const [y, m] = ym.split("-").map(Number);
+  if (!y || !m || m < 1 || m > 12) return ym;
+  if (lang === "zh") return `${y}年${m}月`;
+  return `${EN_MONTHS[m - 1]} ${y}`;
+}
+
+/** Hong Kong–friendly datetime from an ISO timestamp, e.g. `2026-09-26 21:16`. */
+export function formatFetchedAt(iso: string, _lang: Lang = "zh") {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return iso;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Hong_Kong",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(d);
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? "";
+  const hour = get("hour") === "24" ? "00" : get("hour");
+  return `${get("year")}-${get("month")}-${get("day")} ${hour}:${get("minute")}`;
+}
 
 /** Compare 應收按金 vs 已收金額. Never treats missing paid amount as paid. */
 export function depositState(lease: Pick<Tenancy, "deposit" | "depositPaidAmount">): DepositPaidStatus {

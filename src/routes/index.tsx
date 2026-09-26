@@ -5,12 +5,13 @@ import { UserButton } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { DISTRICTS } from "@/lib/rental/hk";
 import { t } from "@/lib/rental/i18n";
-import { hkd } from "@/lib/rental/format";
+import { formatFetchedAt, formatYm, hkd } from "@/lib/rental/format";
 import { getRentIndex } from "@/lib/rental/index.functions";
 import {
   CLASSES,
   INDEX_YEAR,
   LATEST_RENTS,
+  LATEST_RENTS_YM,
   RENT_INDEX,
   classFromSqft,
   estimateRent,
@@ -40,6 +41,7 @@ function MarketHome() {
   const [sqft, setSqft] = useState("500");
   const [points, setPoints] = useState<RentIndexPoint[]>(RENT_INDEX);
   const [indexSource, setIndexSource] = useState<"pending" | "rvd" | "fallback">("pending");
+  const [fetchedAt, setFetchedAt] = useState<string | null>(null);
   const change = indexChange(points);
   const area = Number(sqft);
   const rentClass: RentClass = Number.isFinite(area) && area > 0 ? classFromSqft(area) : "B";
@@ -76,6 +78,7 @@ function MarketHome() {
         if (cancelled || feed.series.length < 6) return;
         setPoints(feed.series);
         setIndexSource(feed.source);
+        setFetchedAt(feed.fetchedAt);
       })
       .catch(() => {
         if (!cancelled) setIndexSource("fallback");
@@ -148,6 +151,22 @@ function MarketHome() {
               />
               <IndexStat label={`2025 ${t(lang, "yearAvg")}`} value={INDEX_YEAR.y2025.toFixed(1)} hint={`2024 ${INDEX_YEAR.y2024.toFixed(1)}`} />
             </div>
+            <p className="mt-4 text-xs leading-relaxed text-paper/55">
+              {[
+                t(lang, "indexAsOf").replace("{ym}", formatYm(lang, change.last.ym)),
+                change.last.provisional ? t(lang, "provisional") : null,
+                indexSource === "rvd"
+                  ? t(lang, "indexSourceRvd")
+                  : indexSource === "fallback"
+                    ? t(lang, "indexSourceFallback")
+                    : null,
+                fetchedAt
+                  ? t(lang, "indexFetched").replace("{when}", formatFetchedAt(fetchedAt, lang))
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
           </div>
 
           <form className="rounded-card border border-line bg-card p-5 md:p-6" onSubmit={(e) => e.preventDefault()}>
@@ -202,6 +221,22 @@ function MarketHome() {
         <section className="mt-8 rounded-card border border-line bg-card p-4 md:p-6">
           <h2 className="font-display text-2xl text-ink">{t(lang, "trendTitle")}</h2>
           <p className="mt-1 text-sm text-muted">1999 = 100 · {t(lang, "indexSchedule")}</p>
+          <p className="mt-1 text-sm text-muted">
+            {[
+              indexSource === "rvd"
+                ? t(lang, "indexSourceRvd")
+                : indexSource === "fallback"
+                  ? t(lang, "indexSourceFallback")
+                  : null,
+              t(lang, "indexAsOf").replace("{ym}", formatYm(lang, change.last.ym)),
+              change.last.provisional ? t(lang, "provisional") : null,
+              fetchedAt
+                ? t(lang, "indexFetched").replace("{when}", formatFetchedAt(fetchedAt, lang))
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
           {indexSource === "fallback" && <p className="mt-1 text-sm text-clay">{t(lang, "indexFallback")}</p>}
           <div className="mt-4 h-56">
             <ResponsiveContainer width="100%" height="100%">
@@ -221,7 +256,7 @@ function MarketHome() {
         <section className="mt-8">
           <h2 className="font-display text-2xl text-ink">{t(lang, "compareTitle")}</h2>
           <p className="mt-1 text-sm text-muted">
-            {lang === "zh" ? band?.zh : band?.en} · 2026-04
+            {lang === "zh" ? band?.zh : band?.en} · {formatYm(lang, LATEST_RENTS_YM)}
           </p>
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
             {REGIONS.map((r) => (
@@ -250,7 +285,7 @@ function MarketHome() {
         </section>
 
         <p className="mt-6 text-sm leading-relaxed text-muted">
-          {t(lang, "sourceNote")}{" "}
+          {t(lang, "sourceNote").replace("{ym}", formatYm(lang, LATEST_RENTS_YM))}{" "}
           <a className="text-brass underline-offset-2 hover:underline" href="https://www.rvd.gov.hk/en/property_market_statistics/index.html">
             rvd.gov.hk
           </a>
