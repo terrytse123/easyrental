@@ -105,6 +105,18 @@ function Desk() {
       <section className="mt-6">
         <h2 className="font-display text-2xl text-ink">{t(lang, "renewTitle")}</h2>
         <p className="mt-1 text-sm text-muted">{t(lang, "renewHint")}</p>
+        <a
+          href={whatsappToMe(
+            lang === "zh"
+              ? "【測試】香港租租續約提醒：這不是真的租約。程式不會自動發送，也不會傳給租客。請在 WhatsApp 選擇自己的對話，再按發送。"
+              : "Test reminder from EasyRentalHK. This is not a real lease. Nothing is sent automatically, and the tenant is not contacted. Choose your own WhatsApp chat, then send.",
+          )}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-2 inline-flex min-h-11 items-center text-sm font-semibold text-brass"
+        >
+          {t(lang, "renewTest")}
+        </a>
         <ul className="mt-3 flex flex-col gap-2">
           {renewals.map((lease) => {
             const property = properties.find((x) => x.id === lease.propertyId);

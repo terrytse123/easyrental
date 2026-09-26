@@ -42,7 +42,7 @@ import java.util.Locale;
 
 public class MainActivity extends Activity {
     private static final String HOME = "https://easyrentalhk.vercel.app/";
-    private static final String LOCAL = "file:///android_asset/local/index.html?v=12";
+    private static final String LOCAL = "file:///android_asset/local/index.html?v=13";
 
     private WebView webView;
     private View chooser;
