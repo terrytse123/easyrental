@@ -73,9 +73,6 @@
       const b = new Date(iso + "T00:00:00");
       return Math.round((b.getTime() - a.getTime()) / 86400000);
     }
-    function selfWa(text) {
-      return "https://wa.me/?text=" + encodeURIComponent(text);
-    }
     function esc(s) {
       return String(s == null ? "" : s)
         .replace(/&/g, "\u0026amp;")
@@ -149,12 +146,9 @@
           const home = byId(db.properties, t.propertyId);
           const who = byId(db.tenants, t.tenantId);
           const days = daysUntil(t.end);
-          const text = days < 0
-            ? "提醒：" + (home ? home.name : "單位") + "（" + (who ? who.name : "租客") + "）的租約已於 " + t.end + " 結束。請盡快同租客確認續約或退租。"
-            : "提醒：" + (home ? home.name : "單位") + "（" + (who ? who.name : "租客") + "）的租約將於 " + t.end + " 到期，還有 " + days + " 日。現在應聯絡租客談續約。";
-          return `<div class="card"><p>${esc(home ? home.name : "單位")} · ${esc(who ? who.name : "")}</p><p class="${days < 0 ? "over" : "sub"}">${esc(text)}</p><a class="ghost" style="display:inline-flex;align-items:center;margin-top:8px" href="${esc(selfWa(text))}">傳到我的 WhatsApp</a></div>`;
+          return `<div class="card"><p>${esc(home ? home.name : "單位")} · ${esc(who ? who.name : "")}</p><p class="${days < 0 ? "over" : "sub"}">${days < 0 ? "租約已完，請盡快確認續約或退租。" : "現在應聯絡租客談續約。"}</p></div>`;
         }).join("") || `<p class="sub">未來三個月沒有租約到期。</p>`;
-        return `<div class="stats"><div class="stat"><span>本月應收</span><b>${hkd(billed)}</b></div><div class="stat"><span>已收</span><b>${hkd(got)}</b></div><div class="stat"><span>未收</span><b>${hkd(billed - got)}</b></div><div class="stat"><span>租約</span><b>${db.tenancies.filter((t) => t.active).length}</b></div></div><h2 style="margin:8px 0">續約提醒</h2><p class="sub">不會自動發送。按連結後，在 WhatsApp 選擇自己的對話再按發送。</p><a class="ghost" style="display:inline-flex;align-items:center;margin:8px 0" href="${esc(selfWa("【測試】香港租租續約提醒：這不是真的租約。程式不會自動發送，也不會傳給租客。請在 WhatsApp 選擇自己的對話，再按發送。"))}">發測試提醒</a>${renewHtml}${rows}<div class="tools"><button type="button" class="ghost" data-action="online">改用網上戶口</button><button type="button" class="ghost" data-action="export">匯出存檔</button><label class="ghost" style="display:inline-flex;align-items:center">匯入存檔<input id="import-file" type="file" accept="application/json,.json" hidden></label></div>`;
+        return `<div class="stats"><div class="stat"><span>本月應收</span><b>${hkd(billed)}</b></div><div class="stat"><span>已收</span><b>${hkd(got)}</b></div><div class="stat"><span>未收</span><b>${hkd(billed - got)}</b></div><div class="stat"><span>租約</span><b>${db.tenancies.filter((t) => t.active).length}</b></div></div><h2 style="margin:8px 0">續約提醒</h2><p class="sub">網上戶口會在到期前三個月寄電郵給你。這部手機的本地帳簿不會自動發信。</p>${renewHtml}${rows}<div class="tools"><button type="button" class="ghost" data-action="online">改用網上戶口</button><button type="button" class="ghost" data-action="export">匯出存檔</button><label class="ghost" style="display:inline-flex;align-items:center">匯入存檔<input id="import-file" type="file" accept="application/json,.json" hidden></label></div>`;
       },
       homes() {
         const list = db.properties.map((p) => `<div class="item card"><div><p>${esc(p.name)}</p><p class="sub">${esc(p.district)} · ${esc(p.sqft || 0)} 平方呎</p></div><button type="button" class="danger" data-action="del-home" data-id="${p.id}">刪除</button></div>`).join("") || `<p class="sub">尚未有物業。</p>`;

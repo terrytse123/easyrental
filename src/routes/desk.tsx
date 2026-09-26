@@ -1,10 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Shell } from "@/components/rental/shell";
 import { Money, Pill } from "@/components/rental/ui";
 import { DISTRICTS } from "@/lib/rental/hk";
 import { t } from "@/lib/rental/i18n";
-import { daysUntil, hkd, monthKey, paymentState, RENEW_WITHIN_DAYS, renewalText, whatsappToMe } from "@/lib/rental/format";
+import { daysUntil, hkd, monthKey, paymentState, RENEW_WITHIN_DAYS } from "@/lib/rental/format";
+import { notifyRenewals, sendRenewalTest } from "@/lib/rental/renewal.functions";
 import { useRental } from "@/lib/rental/store";
 
 export const Route = createFileRoute("/desk")({ component: Desk });
@@ -42,6 +44,11 @@ function Desk() {
     .filter((p) => paymentState(p) !== "paid")
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
     .slice(0, 4);
+  const [mailNote, setMailNote] = useState("");
+
+  useEffect(() => {
+    void notifyRenewals().catch(() => undefined);
+  }, []);
 
   return (
     <Shell>
@@ -105,30 +112,24 @@ function Desk() {
       <section className="mt-6">
         <h2 className="font-display text-2xl text-ink">{t(lang, "renewTitle")}</h2>
         <p className="mt-1 text-sm text-muted">{t(lang, "renewHint")}</p>
-        <a
-          href={whatsappToMe(
-            lang === "zh"
-              ? "【測試】香港租租續約提醒：這不是真的租約。程式不會自動發送，也不會傳給租客。請在 WhatsApp 選擇自己的對話，再按發送。"
-              : "Test reminder from EasyRentalHK. This is not a real lease. Nothing is sent automatically, and the tenant is not contacted. Choose your own WhatsApp chat, then send.",
-          )}
-          target="_blank"
-          rel="noreferrer"
+        <button
+          type="button"
           className="mt-2 inline-flex min-h-11 items-center text-sm font-semibold text-brass"
+          onClick={() => {
+            setMailNote("");
+            void sendRenewalTest()
+              .then((result) => setMailNote(result.ok ? t(lang, "renewTestSent") : t(lang, "renewTestFail")))
+              .catch(() => setMailNote(t(lang, "renewTestFail")));
+          }}
         >
           {t(lang, "renewTest")}
-        </a>
+        </button>
+        {mailNote ? <p className="text-sm text-muted">{mailNote}</p> : null}
         <ul className="mt-3 flex flex-col gap-2">
           {renewals.map((lease) => {
             const property = properties.find((x) => x.id === lease.propertyId);
             const tenant = tenants.find((x) => x.id === lease.tenantId);
             const days = daysUntil(lease.end);
-            const text = renewalText({
-              lang,
-              tenant: tenant?.name || (lang === "zh" ? "租客" : "tenant"),
-              property: property?.name || (lang === "zh" ? "單位" : "the flat"),
-              end: lease.end,
-              days,
-            });
             return (
               <li key={lease.id} className="rounded-2xl border border-line bg-card px-4 py-3">
                 <p className="font-medium">{property?.name}</p>
@@ -139,9 +140,6 @@ function Desk() {
                 <p className={`mt-1 text-sm ${days < 0 ? "text-clay" : "text-ink"}`}>
                   {days < 0 ? t(lang, "renewLate") : t(lang, "renewNow")}
                 </p>
-                <a href={whatsappToMe(text)} target="_blank" rel="noreferrer" className="mt-2 inline-flex min-h-11 items-center text-sm font-semibold text-brass">
-                  {t(lang, "whatsappMe")}
-                </a>
               </li>
             );
           })}

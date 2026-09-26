@@ -19,6 +19,7 @@ import { Route as PropertiesRouteImport } from './routes/properties'
 import { Route as RepairsRouteImport } from './routes/repairs'
 import { Route as SecurityRouteImport } from './routes/security'
 import { Route as TenanciesRouteImport } from './routes/tenancies'
+import { Route as ApiRenewalRouteImport } from './routes/api/renewal'
 import { Route as ApiAccountEnterRouteImport } from './routes/api/account/enter'
 import { Route as ApiAccountOpenRouteImport } from './routes/api/account/open'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
@@ -73,6 +74,11 @@ const TenanciesRoute = TenanciesRouteImport.update({
   path: '/tenancies',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiRenewalRoute = ApiRenewalRouteImport.update({
+  id: '/api/renewal',
+  path: '/api/renewal',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAccountEnterRoute = ApiAccountEnterRouteImport.update({
   id: '/api/account/enter',
   path: '/api/account/enter',
@@ -100,6 +106,7 @@ export interface FileRoutesByFullPath {
   '/repairs': typeof RepairsRoute
   '/security': typeof SecurityRoute
   '/tenancies': typeof TenanciesRoute
+  '/api/renewal': typeof ApiRenewalRoute
   '/api/account/enter': typeof ApiAccountEnterRoute
   '/api/account/open': typeof ApiAccountOpenRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -115,6 +122,7 @@ export interface FileRoutesByTo {
   '/repairs': typeof RepairsRoute
   '/security': typeof SecurityRoute
   '/tenancies': typeof TenanciesRoute
+  '/api/renewal': typeof ApiRenewalRoute
   '/api/account/enter': typeof ApiAccountEnterRoute
   '/api/account/open': typeof ApiAccountOpenRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -131,6 +139,7 @@ export interface FileRoutesById {
   '/repairs': typeof RepairsRoute
   '/security': typeof SecurityRoute
   '/tenancies': typeof TenanciesRoute
+  '/api/renewal': typeof ApiRenewalRoute
   '/api/account/enter': typeof ApiAccountEnterRoute
   '/api/account/open': typeof ApiAccountOpenRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -148,6 +157,7 @@ export interface FileRouteTypes {
     | '/repairs'
     | '/security'
     | '/tenancies'
+    | '/api/renewal'
     | '/api/account/enter'
     | '/api/account/open'
     | '/api/auth/$'
@@ -163,6 +173,7 @@ export interface FileRouteTypes {
     | '/repairs'
     | '/security'
     | '/tenancies'
+    | '/api/renewal'
     | '/api/account/enter'
     | '/api/account/open'
     | '/api/auth/$'
@@ -178,6 +189,7 @@ export interface FileRouteTypes {
     | '/repairs'
     | '/security'
     | '/tenancies'
+    | '/api/renewal'
     | '/api/account/enter'
     | '/api/account/open'
     | '/api/auth/$'
@@ -194,6 +206,7 @@ export interface RootRouteChildren {
   RepairsRoute: typeof RepairsRoute
   SecurityRoute: typeof SecurityRoute
   TenanciesRoute: typeof TenanciesRoute
+  ApiRenewalRoute: typeof ApiRenewalRoute
   ApiAccountEnterRoute: typeof ApiAccountEnterRoute
   ApiAccountOpenRoute: typeof ApiAccountOpenRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
@@ -271,6 +284,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TenanciesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/renewal': {
+      id: '/api/renewal'
+      path: '/api/renewal'
+      fullPath: '/api/renewal'
+      preLoaderRoute: typeof ApiRenewalRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/account/enter': {
       id: '/api/account/enter'
       path: '/api/account/enter'
@@ -306,6 +326,7 @@ const rootRouteChildren: RootRouteChildren = {
   RepairsRoute: RepairsRoute,
   SecurityRoute: SecurityRoute,
   TenanciesRoute: TenanciesRoute,
+  ApiRenewalRoute: ApiRenewalRoute,
   ApiAccountEnterRoute: ApiAccountEnterRoute,
   ApiAccountOpenRoute: ApiAccountOpenRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
