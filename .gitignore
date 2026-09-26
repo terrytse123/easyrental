@@ -2,3 +2,6 @@
 .data
 node_modules
 .vercel
+
+# Generated from public/tenancy-template-blank.pdf.b64
+public/tenancy-template-blank.pdf
