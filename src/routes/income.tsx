@@ -36,12 +36,14 @@ function IncomePage() {
   const lines = [...rows.values()]
     .map((row) => {
       const property = properties.find((item) => item.id === row.propertyId);
-      const holding = ((property?.managementFee ?? 0) + (property?.rates ?? 0)) * 12;
+      const management = (property?.managementFee ?? 0) * 12;
+      const rates = (property?.rates ?? 0) * 4;
       return {
         ...row,
         name: property?.name ?? "—",
-        holding,
-        net: row.rent - row.repairs - holding,
+        management,
+        rates,
+        net: row.rent - row.repairs - management - rates,
       };
     })
     .sort((a, b) => b.year.localeCompare(a.year) || a.name.localeCompare(b.name, "zh-HK"));
@@ -73,10 +75,11 @@ function IncomePage() {
                       <Money>{hkd(line.net, lang)}</Money>
                     </p>
                   </div>
-                  <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
                     <Meta label={t(lang, "incomeRent")} value={hkd(line.rent, lang)} />
                     <Meta label={t(lang, "incomeRepairs")} value={hkd(line.repairs, lang)} />
-                    <Meta label={t(lang, "incomeHolding")} value={hkd(line.holding, lang)} />
+                    <Meta label={t(lang, "incomeMgmt")} value={hkd(line.management, lang)} />
+                    <Meta label={t(lang, "incomeRates")} value={hkd(line.rates, lang)} />
                   </div>
                 </li>
               ))}

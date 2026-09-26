@@ -215,11 +215,12 @@
         });
         const lines = Array.from(rows.values()).map((row) => {
           const home = byId(db.properties, row.propertyId);
-          const holding = ((home && home.managementFee) || 0) + ((home && home.rates) || 0);
-          return { ...row, name: home ? home.name : "單位", holding: holding * 12, net: row.rent - row.repairs - holding * 12 };
+          const management = ((home && home.managementFee) || 0) * 12;
+          const rates = ((home && home.rates) || 0) * 4;
+          return { ...row, name: home ? home.name : "單位", management, rates, net: row.rent - row.repairs - management - rates };
         }).sort((a, b) => b.year.localeCompare(a.year) || a.name.localeCompare(b.name, "zh-HK"));
-        if (!lines.length) return `<p class="sub">未有已收租金或維修，暫時未能計算。已收租金按付款月份計入該年，再減維修。</p>`;
-        let html = `<p class="sub">已收租金按付款月份計入該年，再減維修。管理費及差餉用每月金額乘 12。按金不算收入。</p>`;
+        if (!lines.length) return `<p class="sub">未有已收租金或維修，暫時未能計算。已收租金按付款月份計入該年。管理費按每月乘 12，差餉按每季乘 4。</p>`;
+        let html = `<p class="sub">已收租金按付款月份計入該年，再減維修。管理費按每月乘 12，差餉及地租按每季乘 4。按金不算收入。</p>`;
         let year = "";
         lines.forEach((line) => {
           if (line.year !== year) {
@@ -227,7 +228,7 @@
             const total = lines.filter((item) => item.year === year).reduce((sum, item) => sum + item.net, 0);
             html += `<h2 style="margin:12px 0 4px">${esc(year)} · 合計 ${hkd(total)}</h2>`;
           }
-          html += `<div class="card"><div class="item"><p>${esc(line.name)}</p><b class="${line.net < 0 ? "over" : ""}">${hkd(line.net)}</b></div><p class="sub">已收 ${hkd(line.rent)} · 維修 ${hkd(line.repairs)} · 管理費及差餉 ${hkd(line.holding)}</p></div>`;
+          html += `<div class="card"><div class="item"><p>${esc(line.name)}</p><b class="${line.net < 0 ? "over" : ""}">${hkd(line.net)}</b></div><p class="sub">已收 ${hkd(line.rent)} · 維修 ${hkd(line.repairs)} · 管理費 ${hkd(line.management)} · 差餉 ${hkd(line.rates)}</p></div>`;
         });
         return html;
       },
