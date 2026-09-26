@@ -8,7 +8,10 @@ import {
   ledgerSaveOk,
   type LedgerSaveResult,
 } from "./ledger-conflict";
-import type { Payment, Property, RentalData, Tenancy, Tenant, Ticket } from "./types";
+import { asLedger } from "./ledger-parse";
+import type { RentalData } from "./types";
+
+export { asLedger, asTenancy } from "./ledger-parse";
 
 const EMPTY: RentalData = {
   properties: [],
@@ -17,26 +20,6 @@ const EMPTY: RentalData = {
   payments: [],
   tickets: [],
 };
-
-function asList<T>(value: unknown): T[] | null {
-  return Array.isArray(value) ? (value as T[]) : null;
-}
-
-export function asLedger(data: unknown): RentalData {
-  if (!data || typeof data !== "object") throw new Error("Invalid ledger");
-  const row = data as Record<string, unknown>;
-  const properties = asList<Property>(row.properties);
-  const tenants = asList<Tenant>(row.tenants);
-  const tenancies = asList<Tenancy>(row.tenancies);
-  const payments = asList<Payment>(row.payments);
-  const tickets = asList<Ticket>(row.tickets);
-  if (!properties || !tenants || !tenancies || !payments || !tickets) {
-    throw new Error("Invalid ledger");
-  }
-  const ledger = { properties, tenants, tenancies, payments, tickets };
-  if (JSON.stringify(ledger).length > 400_000) throw new Error("Ledger is too large");
-  return ledger;
-}
 
 function readPayload(payload: unknown): RentalData {
   const raw = typeof payload === "string" ? JSON.parse(payload) : payload;
