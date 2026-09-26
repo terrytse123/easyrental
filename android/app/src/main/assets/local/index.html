@@ -56,6 +56,7 @@
     let db = empty();
     let tab = "home";
     let editLeaseId = "";
+    let payProperty = "";
 
     function uid(prefix) { return prefix + "-" + Math.random().toString(36).slice(2, 10); }
     function monthKey(d = new Date()) {
@@ -176,7 +177,12 @@
           const who = byId(db.tenants, t.tenantId);
           return `<option value="${t.id}">${esc(home ? home.name : "單位")} · ${esc(who ? who.name : "")}</option>`;
         }).join("");
-        const list = db.payments.map((p) => {
+        const homes = db.properties.map((p) => `<option value="${p.id}"${payProperty === p.id ? " selected" : ""}>${esc(p.name)}</option>`).join("");
+        const list = db.payments.filter((p) => {
+          if (!payProperty) return true;
+          const lease = byId(db.tenancies, p.tenancyId);
+          return lease && lease.propertyId === payProperty;
+        }).map((p) => {
           const lease = byId(db.tenancies, p.tenancyId);
           const home = lease && byId(db.properties, lease.propertyId);
           const who = lease && byId(db.tenants, lease.tenantId);
@@ -186,7 +192,7 @@
         const add = db.tenancies.length
           ? `<form data-kind="newpay"><label>租約<select name="tenancyId">${opts}</select></label><label>金額（HK$）<input name="amount" inputmode="numeric" required></label><label>付款月份<input name="period" type="month" required value="${monthKey()}"></label><label>收款日期<input name="paidDate" type="date" required value="${today()}"></label><label>方式<select name="method">${METHODS.map(([v, label]) => `<option value="${v}">${label}</option>`).join("")}</select></label><label>參考編號<input name="ref"></label><button class="primary" type="submit">新增收款</button></form>`
           : `<p>請先新增租約。</p>`;
-        return `${add}<button type="button" class="ghost" data-action="charges">生成本月未開的租金</button>${list}<form id="pay-form" class="hide" data-kind="paid"><input type="hidden" name="id"><label>收款日期<input name="paidDate" type="date" required value="${today()}"></label><label>方式<select name="method">${METHODS.map(([v, label]) => `<option value="${v}">${label}</option>`).join("")}</select></label><label>參考編號<input name="ref"></label><button class="primary" type="submit">儲存</button></form>`;
+        return `${add}<label>物業<select data-pay-property><option value="">全部物業</option>${homes}</select></label><button type="button" class="ghost" data-action="charges">生成本月未開的租金</button>${list}<form id="pay-form" class="hide" data-kind="paid"><input type="hidden" name="id"><label>收款日期<input name="paidDate" type="date" required value="${today()}"></label><label>方式<select name="method">${METHODS.map(([v, label]) => `<option value="${v}">${label}</option>`).join("")}</select></label><label>參考編號<input name="ref"></label><button class="primary" type="submit">儲存</button></form>`;
       },
       fix() {
         if (!db.properties.length) return `<p>請先新增物業。</p>`;
@@ -386,6 +392,11 @@
       fillPapers();
     });
     document.getElementById("app").addEventListener("change", (event) => {
+      if (event.target.dataset && event.target.dataset.payProperty !== undefined) {
+        payProperty = event.target.value;
+        render();
+        return;
+      }
       if (event.target.dataset && event.target.dataset.file) {
         const input = event.target;
         const files = Array.from(input.files || []);

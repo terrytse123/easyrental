@@ -28,11 +28,16 @@ function LedgerPage() {
   const markPaid = useRental((s) => s.markPaid);
   const addPayment = useRental((s) => s.addPayment);
   const [filter, setFilter] = useState<"all" | "overdue" | "paid" | "due">("all");
+  const [propertyId, setPropertyId] = useState("all");
   const [paying, setPaying] = useState<Payment | null>(null);
   const [adding, setAdding] = useState(false);
 
   const rows = [...payments]
     .filter((p) => {
+      if (propertyId !== "all") {
+        const lease = tenancies.find((x) => x.id === p.tenancyId);
+        if (lease?.propertyId !== propertyId) return false;
+      }
       const state = paymentState(p);
       if (filter === "all") return true;
       if (filter === "due") return state === "due" || state === "partial";
@@ -49,7 +54,15 @@ function LedgerPage() {
           {t(lang, "addPayment")}
         </PrimaryButton>
       </div>
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <Select value={propertyId} onChange={(e) => setPropertyId(e.target.value)}>
+          <option value="all">{t(lang, "allProperties")}</option>
+          {properties.map((property) => (
+            <option key={property.id} value={property.id}>
+              {property.name}
+            </option>
+          ))}
+        </Select>
         {(
           [
             ["all", t(lang, "all")],
