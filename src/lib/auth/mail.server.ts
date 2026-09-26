@@ -7,6 +7,19 @@ function cleanHeader(value: string): string {
   return value.replace(/[\r\n]/g, "").trim();
 }
 
+function headerValue(value: string): string {
+  const clean = value.replace(/[\r\n]/g, "").trim();
+  const named = clean.match(/^(.*?)\s*<([^>]+)>$/);
+  if (named) {
+    const name = named[1].trim().replace(/^"|"$/g, "");
+    const email = named[2].trim();
+    const encoded = /^[\x00-\x7F]*$/.test(name) ? name : `=?UTF-8?B?${Buffer.from(name, "utf8").toString("base64")}?=`;
+    return `${encoded} <${email}>`;
+  }
+  if (/^[\x00-\x7F]*$/.test(clean)) return clean;
+  return `=?UTF-8?B?${Buffer.from(clean, "utf8").toString("base64")}?=`;
+}
+
 /** Send a plain-text message. Uses Resend when RESEND_API_KEY is set, otherwise SMTP. */
 export async function sendMail(to: string, subject: string, text: string): Promise<Sent> {
   const recipient = cleanHeader(to);
@@ -90,7 +103,7 @@ async function authAndSend(socket: Socket, input: {
   socket.write("DATA\r\n");
   expect(await readCode(socket), [354]);
   socket.write(
-    `From: ${input.from}\r\nTo: ${input.to}\r\nSubject: ${input.subject}\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n${input.text}\r\n.\r\n`,
+    `From: ${headerValue(input.from)}\r\nTo: ${input.to}\r\nSubject: ${headerValue(input.subject)}\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n${input.text}\r\n.\r\n`,
   );
   expect(await readCode(socket), [250]);
   socket.write("QUIT\r\n");
