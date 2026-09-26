@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 import { dueDateFor, monthKey, todayISO, uid } from "./format";
 import { isLedgerConflict } from "./ledger-conflict";
 import { getLedger, saveLedger } from "./ledger.functions";
+import { asLedger } from "./ledger-parse";
 import { SEED } from "./seed";
 import type {
   Lang,
@@ -308,12 +309,13 @@ export const useRental = create<State>()(
         queueSave();
       },
       importData: (data) => {
+        const ledger = asLedger(data);
         set({
-          properties: data.properties ?? [],
-          tenants: data.tenants ?? [],
-          tenancies: data.tenancies ?? [],
-          payments: data.payments ?? [],
-          tickets: data.tickets ?? [],
+          properties: ledger.properties,
+          tenants: ledger.tenants,
+          tenancies: ledger.tenancies,
+          payments: ledger.payments,
+          tickets: ledger.tickets,
         });
         queueSave();
       },

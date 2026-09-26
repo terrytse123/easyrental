@@ -5,7 +5,7 @@ import { Shell } from "@/components/rental/shell";
 import { Money, Pill } from "@/components/rental/ui";
 import { DISTRICTS } from "@/lib/rental/hk";
 import { t } from "@/lib/rental/i18n";
-import { daysUntil, hkd, monthKey, paymentState, RENEW_WITHIN_DAYS } from "@/lib/rental/format";
+import { daysUntil, depositState, hkd, monthKey, paymentState, RENEW_WITHIN_DAYS } from "@/lib/rental/format";
 import { notifyRenewals, sendRenewalTest } from "@/lib/rental/renewal.functions";
 import { useRental } from "@/lib/rental/store";
 
@@ -30,6 +30,7 @@ function Desk() {
     .filter((x) => x.active && daysUntil(x.end) <= RENEW_WITHIN_DAYS)
     .sort((a, b) => a.end.localeCompare(b.end));
   const open = tickets.filter((k) => k.status !== "done");
+  const depositUnpaid = tenancies.filter((x) => x.active && depositState(x) !== "paid");
 
   const chart = ["2026-07", "2026-08", "2026-09", "2026-10"].map((period) => {
     const rows = payments.filter((p) => p.period === period);
@@ -84,6 +85,11 @@ function Desk() {
           <Stat label={t(lang, "overdue")} value={String(overdue.length)} tone={overdue.length ? "clay" : "ink"} />
           <Stat label={t(lang, "expiring")} value={String(expiring.length)} />
           <Stat label={t(lang, "openRepairs")} value={String(open.length)} />
+          <Stat
+            label={t(lang, "depositUnpaid")}
+            value={String(depositUnpaid.length)}
+            tone={depositUnpaid.length ? "clay" : "ink"}
+          />
         </div>
       </section>
 
