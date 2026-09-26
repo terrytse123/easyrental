@@ -170,14 +170,22 @@
         return `<form data-kind="lease"><label>物業<select name="propertyId">${opts}</select></label><label>租客姓名<input name="tenant" required value="${esc(who ? who.name : "")}"></label><label>電話<input name="phone" value="${esc(who ? who.phone : "")}"></label><label>月租（HK$）<input name="rent" inputmode="numeric" required value="${editing ? editing.rent : ""}"></label><label>開始<input name="start" type="date" required value="${editing ? editing.start : ""}"></label><label>結束<input name="end" type="date" required value="${editing ? editing.end : ""}"></label><label>每月交租日<input name="dueDay" inputmode="numeric" value="${editing ? editing.dueDay : 1}"></label><button class="primary" type="submit">${editing ? "儲存修改" : "新增租約"}</button>${editing ? `<button type="button" class="ghost" data-action="cancel-lease">取消</button>` : ""}</form>${list}`;
       },
       pay() {
+        const opts = db.tenancies.map((t) => {
+          const home = byId(db.properties, t.propertyId);
+          const who = byId(db.tenants, t.tenantId);
+          return `<option value="${t.id}">${esc(home ? home.name : "單位")} · ${esc(who ? who.name : "")}</option>`;
+        }).join("");
         const list = db.payments.map((p) => {
           const lease = byId(db.tenancies, p.tenancyId);
           const home = lease && byId(db.properties, lease.propertyId);
           const who = lease && byId(db.tenants, lease.tenantId);
           const paid = p.paidAmount >= p.amount;
-          return `<div class="card item"><div><p>${esc(home ? home.name : "")} · ${esc(p.period)}</p><p class="${paid ? "ok" : "over"}">${esc(who ? who.name : "")} · ${paid ? "已收" : "未收"} ${hkd(p.amount)}</p></div>${paid ? "" : `<button type="button" data-action="paid" data-id="${p.id}">記一筆已收</button>`}</div>`;
-        }).join("") || `<p class="sub">未有收款。新增租約後會生成本月租金。</p>`;
-        return `<button type="button" class="ghost" data-action="charges">生成本月未開的租金</button>${list}<form id="pay-form" class="hide" data-kind="paid"><input type="hidden" name="id"><label>方式<select name="method">${METHODS.map(([v, label]) => `<option value="${v}">${label}</option>`).join("")}</select></label><label>參考編號<input name="ref"></label><button class="primary" type="submit">儲存</button></form>`;
+          return `<div class="card item"><div><p>${esc(home ? home.name : "")} · ${esc(p.period)}</p><p class="${paid ? "ok" : "over"}">${esc(who ? who.name : "")} · ${paid ? "已收 " + esc(p.paidDate || "") : "未收"} ${hkd(p.amount)}</p></div>${paid ? "" : `<button type="button" data-action="paid" data-id="${p.id}">記一筆已收</button>`}</div>`;
+        }).join("") || `<p class="sub">未有收款。</p>`;
+        const add = db.tenancies.length
+          ? `<form data-kind="newpay"><label>租約<select name="tenancyId">${opts}</select></label><label>金額（HK$）<input name="amount" inputmode="numeric" required></label><label>付款月份<input name="period" type="month" required value="${monthKey()}"></label><label>收款日期<input name="paidDate" type="date" required value="${today()}"></label><label>方式<select name="method">${METHODS.map(([v, label]) => `<option value="${v}">${label}</option>`).join("")}</select></label><label>參考編號<input name="ref"></label><button class="primary" type="submit">新增收款</button></form>`
+          : `<p>請先新增租約。</p>`;
+        return `${add}<button type="button" class="ghost" data-action="charges">生成本月未開的租金</button>${list}<form id="pay-form" class="hide" data-kind="paid"><input type="hidden" name="id"><label>收款日期<input name="paidDate" type="date" required value="${today()}"></label><label>方式<select name="method">${METHODS.map(([v, label]) => `<option value="${v}">${label}</option>`).join("")}</select></label><label>參考編號<input name="ref"></label><button class="primary" type="submit">儲存</button></form>`;
       },
       fix() {
         if (!db.properties.length) return `<p>請先新增物業。</p>`;
@@ -221,9 +229,28 @@
           ensureCharge(tenancy);
         }
       }
+      if (kind === "newpay") {
+        const lease = byId(db.tenancies, data.tenancyId);
+        const period = String(data.period || "").slice(0, 7);
+        const amount = Number(data.amount) || 0;
+        if (lease && /^\d{4}-\d{2}$/.test(period)) {
+          const dueDay = Math.min(28, Math.max(1, Number(lease.dueDay) || 1));
+          db.payments.unshift({
+            id: uid("pay"),
+            tenancyId: lease.id,
+            period,
+            amount,
+            paidAmount: amount,
+            dueDate: period + "-" + String(dueDay).padStart(2, "0"),
+            paidDate: data.paidDate,
+            method: data.method,
+            ref: String(data.ref || "").trim(),
+          });
+        }
+      }
       if (kind === "paid") {
         const payment = byId(db.payments, data.id);
-        if (payment) { payment.paidAmount = payment.amount; payment.paidDate = today(); payment.method = data.method; payment.ref = data.ref.trim(); }
+        if (payment) { payment.paidAmount = payment.amount; payment.paidDate = data.paidDate || today(); payment.method = data.method; payment.ref = String(data.ref || "").trim(); }
       }
       if (kind === "fix") {
         db.tickets.unshift({ id: uid("tk"), propertyId: data.propertyId, title: data.title.trim(), detail: "", status: "open", priority: "med", created: today(), cost: Number(data.cost) || 0 });

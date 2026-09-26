@@ -38,7 +38,15 @@ type State = RentalData & {
   addTenancy: (t: Omit<Tenancy, "id">) => void;
   updateTenancy: (id: string, patch: Partial<Tenancy>) => void;
   removeTenancy: (id: string) => void;
-  markPaid: (id: string, method: PayMethod, ref: string) => void;
+  addPayment: (input: {
+    tenancyId: string;
+    period: string;
+    amount: number;
+    paidDate: string;
+    method: PayMethod;
+    ref: string;
+  }) => void;
+  markPaid: (id: string, method: PayMethod, ref: string, paidDate: string) => void;
   addTicket: (t: Omit<Ticket, "id" | "created">) => void;
   setTicketStatus: (id: string, status: TicketStatus) => void;
   removeTicket: (id: string) => void;
@@ -214,14 +222,34 @@ export const useRental = create<State>()(
         }));
         queueSave();
       },
-      markPaid: (id, method, ref) => {
+      addPayment: (input) => {
+        const period = input.period.slice(0, 7);
+        if (!/^\d{4}-\d{2}$/.test(period) || !input.tenancyId || input.amount < 0) return;
+        set((s) => {
+          const lease = s.tenancies.find((t) => t.id === input.tenancyId);
+          const payment: Payment = {
+            id: uid("pay"),
+            tenancyId: input.tenancyId,
+            period,
+            amount: input.amount,
+            paidAmount: input.paidDate ? input.amount : 0,
+            dueDate: dueDateFor(period, lease?.dueDay ?? 1),
+            paidDate: input.paidDate || undefined,
+            method: input.paidDate ? input.method : undefined,
+            ref: input.ref.trim() || undefined,
+          };
+          return { payments: [payment, ...s.payments] };
+        });
+        queueSave();
+      },
+      markPaid: (id, method, ref, paidDate) => {
         set((s) => ({
           payments: s.payments.map((p) =>
             p.id === id
               ? {
                   ...p,
                   paidAmount: p.amount,
-                  paidDate: todayISO(),
+                  paidDate: paidDate || todayISO(),
                   method,
                   ref: ref.trim() || undefined,
                 }
