@@ -1,6 +1,13 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
+import {
+  asUpdatedAtIso,
+  isStaleSave,
+  ledgerSaveConflict,
+  ledgerSaveOk,
+  type LedgerSaveResult,
+} from "./ledger-conflict";
 import type { Payment, Property, RentalData, Tenancy, Tenant, Ticket } from "./types";
 
 const EMPTY: RentalData = {
@@ -36,28 +43,72 @@ function readPayload(payload: unknown): RentalData {
   return asLedger(raw);
 }
 
+export type LedgerLoadResult = {
+  data: RentalData;
+  /** Null when the user has never saved a ledger row. */
+  updatedAt: string | null;
+};
+
+function parseExpectedUpdatedAt(value: unknown): string | null {
+  if (value == null || value === "") return null;
+  if (typeof value !== "string") throw new Error("Invalid expectedUpdatedAt");
+  return asUpdatedAtIso(value);
+}
+
 export const getLedger = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
-  .handler(async ({ context }) => {
+  .handler(async ({ context }): Promise<LedgerLoadResult> => {
     const sql = await getSql();
-    const rows = await sql<{ payload: unknown }>`
-      select payload from ledgers where user_id = ${context.userId}
+    const rows = await sql<{ payload: unknown; updated_at: unknown }>`
+      select payload, updated_at from ledgers where user_id = ${context.userId}
     `;
-    if (!rows[0]) return EMPTY;
-    return readPayload(rows[0].payload);
+    if (!rows[0]) return { data: EMPTY, updatedAt: null };
+    return {
+      data: readPayload(rows[0].payload),
+      updatedAt: asUpdatedAtIso(rows[0].updated_at),
+    };
   });
 
 export const saveLedger = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((data: RentalData) => asLedger(data))
-  .handler(async ({ context, data }) => {
+  .validator((input: { ledger: RentalData; expectedUpdatedAt: string | null }) => {
+    if (!input || typeof input !== "object") throw new Error("Invalid save");
+    return {
+      ledger: asLedger(input.ledger),
+      expectedUpdatedAt: parseExpectedUpdatedAt(input.expectedUpdatedAt),
+    };
+  })
+  .handler(async ({ context, data }): Promise<LedgerSaveResult> => {
     const sql = await getSql();
-    await sql.query(
+    const payloadJson = JSON.stringify(data.ledger);
+
+    // Atomic optimistic upsert: INSERT when missing; UPDATE only when the
+    // client's expectedUpdatedAt matches the current row. Otherwise RETURNING
+    // is empty and we report conflict without overwriting.
+    // Truncate to milliseconds so the token round-trips through JS Date
+    // (Postgres timestamptz is microsecond-precise; Date is not).
+    const returning = await sql.query<{ updated_at: unknown }>(
       `insert into ledgers (user_id, payload, updated_at)
-       values ($1, $2::jsonb, now())
+       values ($1, $2::jsonb, date_trunc('milliseconds', now()))
        on conflict (user_id) do update
-         set payload = excluded.payload, updated_at = now()`,
-      [context.userId, JSON.stringify(data)],
+         set payload = excluded.payload,
+             updated_at = date_trunc('milliseconds', now())
+       where date_trunc('milliseconds', ledgers.updated_at)
+             is not distinct from date_trunc('milliseconds', $3::timestamptz)
+       returning updated_at`,
+      [context.userId, payloadJson, data.expectedUpdatedAt],
     );
-    return { ok: true as const };
+
+    if (!isStaleSave(returning)) {
+      return ledgerSaveOk(returning[0].updated_at);
+    }
+
+    const current = await sql<{ updated_at: unknown }>`
+      select updated_at from ledgers where user_id = ${context.userId}
+    `;
+    if (!current[0]) {
+      // Extremely rare race (row vanished between attempts); treat as retryable error.
+      throw new Error("Ledger row missing after conflict");
+    }
+    return ledgerSaveConflict(current[0].updated_at);
   });
