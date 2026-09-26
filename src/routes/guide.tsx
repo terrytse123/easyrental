@@ -100,6 +100,16 @@ function GuidePage() {
     <Shell>
       <h1 className="font-display text-4xl text-ink">{t(lang, "guideTitle")}</h1>
       <p className="mt-2 max-w-2xl text-sm text-muted">{t(lang, "disclaimer")}</p>
+      <p className="mt-3 max-w-2xl text-sm text-muted">
+        {t(lang, "downloadTenancyTemplateHint")}{" "}
+        <a
+          className="font-semibold text-brass underline-offset-2 hover:underline"
+          href="/tenancy-template-blank.pdf"
+          download="easyrentalhk-tenancy-template-blank.pdf"
+        >
+          {t(lang, "downloadTenancyTemplate")}
+        </a>
+      </p>
       <ol className="mt-6 flex flex-col gap-3">
         {notes[lang].map((item, i) => (
           <li key={item.h} className="rounded-card border border-line bg-card p-4">
