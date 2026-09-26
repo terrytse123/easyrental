@@ -102,6 +102,13 @@ function MarketHome() {
             <a className="mt-1 block text-xs font-semibold text-brass" href="/EasyRentalHK-122.apk" download="EasyRentalHK.apk">
               {lang === "zh" ? "下載 Android 版" : "Download Android app"}
             </a>
+            <a
+              className="mt-1 block text-xs font-semibold text-brass"
+              href="/tenancy-template-blank.pdf"
+              download="easyrentalhk-tenancy-template-blank.pdf"
+            >
+              {t(lang, "downloadTenancyTemplate")}
+            </a>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -142,6 +149,12 @@ function MarketHome() {
             <p className="text-sm text-brass-soft">{t(lang, "marketKicker")}</p>
             <h1 className="font-display mt-3 text-4xl leading-tight md:text-5xl">{t(lang, "marketTitle")}</h1>
             <p className="mt-4 max-w-xl text-sm leading-relaxed text-paper/75">{t(lang, "marketLead")}</p>
+            <p className="mt-3 max-w-xl text-xs leading-relaxed text-paper/55">
+              {t(lang, "downloadTenancyTemplateHint")}{" "}
+              <a className="font-semibold text-brass underline-offset-2 hover:underline" href="/tenancy-template-blank.pdf" download="easyrentalhk-tenancy-template-blank.pdf">
+                {t(lang, "downloadTenancyTemplate")}
+              </a>
+            </p>
             <div className="mt-8 grid gap-4 sm:grid-cols-3">
               <IndexStat label={t(lang, "indexNow")} value={change.last.value.toFixed(1)} hint={change.last.provisional ? `${change.last.ym} · ${t(lang, "provisional")}` : change.last.ym} />
               <IndexStat
