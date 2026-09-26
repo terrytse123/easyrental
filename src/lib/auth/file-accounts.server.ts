@@ -3,14 +3,14 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getSql, type Sql } from "@/lib/db";
 import QRCode from "qrcode";
-import { sendMail, verificationLetter } from "./mail.server";
+import { sendMail, resetLetter, verificationLetter } from "./mail.server";
 import { codesMatch, newEmailCode, newTotpSecret, otpauthUrl, verifyTotp } from "./otp.server";
 
 type AccountUser = { id: string; name: string; email: string };
 
 export type OpenResult =
   | { ok: true; token: string; user: AccountUser }
-  | { ok: false; message: string; next?: "verify" | "mfa"; challenge?: string };
+  | { ok: false; message: string; next?: "verify" | "mfa" | "reset-code"; challenge?: string };
 
 type LegacyUser = { id: string; name: string; email: string; password: string };
 type LegacySession = { token: string; userId: string; expiresAt: number };
@@ -124,6 +124,35 @@ function verifyRedirect(delivery: "sent" | "wait" | "mail"): OpenResult {
   };
 }
 
+async function sendResetCode(sql: Sql, email: string): Promise<"sent" | "wait" | "mail"> {
+  const recent = await sql.query<{ sent_at: string }>(
+    `select sent_at from app_email_codes
+     where email = $1 and purpose = 'reset' and sent_at > now() - interval '30 seconds'
+     limit 1`,
+    [email],
+  );
+  if (recent[0]) return "wait";
+  const issued = newEmailCode();
+  await sql.query(
+    `insert into app_email_codes (email, purpose, code_hash, salt, sent_at, expires_at)
+     values ($1, 'reset', $2, $3, now(), now() + interval '10 minutes')
+     on conflict (email, purpose) do update
+     set code_hash = excluded.code_hash, salt = excluded.salt, sent_at = now(), expires_at = excluded.expires_at`,
+    [email, issued.hash, issued.salt],
+  );
+  const letter = resetLetter(issued.code);
+  const sent = await sendMail(email, letter.subject, letter.text);
+  return sent.ok ? "sent" : "mail";
+}
+
+function resetRedirect(delivery: "sent" | "wait" | "mail"): OpenResult {
+  return {
+    ok: false,
+    message: delivery === "mail" ? "Mail failed" : "Reset code sent",
+    next: "reset-code",
+  };
+}
+
 async function signedIn(sql: Sql, user: UserRow): Promise<OpenResult> {
   const token = await startSession(sql, user.id);
   return { ok: true, token, user: { id: user.id, name: user.name, email: user.email } };
@@ -190,18 +219,51 @@ export async function openEmailAccount(input: {
     return signedIn(sql, user);
   }
 
+  if (input.mode === "reset") {
+    if (!email.includes("@") || email.length > 120) return { ok: false, message: "Invalid email" };
+    const found = await findUser(sql, email);
+    if (!found) return { ok: false, message: "No account" };
+    return resetRedirect(await sendResetCode(sql, email));
+  }
+
+  if (input.mode === "reset-code") {
+    if (!email.includes("@") || email.length > 120) return { ok: false, message: "Invalid email" };
+    if (password.length < 8 || password.length > 200) return { ok: false, message: "Password too short" };
+    if (!/^\d{6}$/.test(code)) return { ok: false, message: "Bad code", next: "reset-code" };
+    const found = await findUser(sql, email);
+    if (!found) return { ok: false, message: "No account" };
+    const rows = await sql.query<{ code_hash: string; salt: string }>(
+      `select code_hash, salt from app_email_codes
+       where email = $1 and purpose = 'reset' and expires_at > now() limit 1`,
+      [email],
+    );
+    const pending = rows[0];
+    if (!pending || !codesMatch(code, pending.salt, pending.code_hash)) {
+      return { ok: false, message: "Bad code", next: "reset-code" };
+    }
+    await sql.query(`update app_users set password_hash = $1 where id = $2`, [hashPassword(password), found.id]);
+    await sql.query(`delete from app_email_codes where email = $1 and purpose = 'reset'`, [email]);
+    if (!found.email_verified) return verifyRedirect(await sendVerifyCode(sql, email));
+    if (found.mfa_enabled && found.totp_secret) {
+      const challenge = randomBytes(16).toString("hex");
+      await sql.query(
+        `insert into app_mfa_challenges (id, user_id, expires_at) values ($1, $2, now() + interval '5 minutes')`,
+        [challenge, found.id],
+      );
+      return { ok: false, message: "MFA required", next: "mfa", challenge };
+    }
+    return signedIn(sql, found);
+  }
+
   if (!email.includes("@") || email.length > 120) return { ok: false, message: "Invalid email" };
   if (password.length < 8 || password.length > 200) return { ok: false, message: "Password too short" };
 
   const found = await findUser(sql, email);
 
-  if (input.mode === "signin" || input.mode === "reset") {
+  if (input.mode === "signin") {
     if (!found) return { ok: false, message: "No account" };
-    if (input.mode === "signin" && !checkPassword(password, found.password_hash)) {
+    if (!checkPassword(password, found.password_hash)) {
       return { ok: false, message: "Invalid email or password" };
-    }
-    if (input.mode === "reset") {
-      await sql.query(`update app_users set password_hash = $1 where id = $2`, [hashPassword(password), found.id]);
     }
     if (!found.email_verified) return verifyRedirect(await sendVerifyCode(sql, email));
     if (found.mfa_enabled && found.totp_secret) {

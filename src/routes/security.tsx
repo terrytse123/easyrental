@@ -69,7 +69,7 @@ function SecurityPage() {
 
           <section className="space-y-3">
             <h2 className="font-display text-2xl text-ink">{t(lang, "settingsPassword")}</h2>
-            <form method="get" action="/api/account/enter" className="space-y-3">
+            <form method="post" action="/api/account/enter" className="space-y-3">
               <input type="hidden" name="mode" value="password" />
               <label className="block text-muted">
                 {t(lang, "currentPassword")}
