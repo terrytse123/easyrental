@@ -1,11 +1,23 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { appendFileSync } from "node:fs";
+import {
+  cookieShouldBeSecure,
+  rejectGetWithSecretParams,
+  sessionCookieHeader,
+} from "@/lib/auth/account-open-guards";
 import { findAccountUser, openEmailAccount, beginMfa, confirmMfa, disableMfa, securityView, updateProfile, changePassword } from "@/lib/auth/file-accounts.server";
 import { dbSource } from "@/lib/db";
 
-function fail(mode: string, email: string, message: string, asPage: boolean) {
-  if (!asPage) return jsonResult({ ok: false, message });
-  const back = mode === "register" ? "register" : mode === "reset" ? "reset" : "signin";
+function fail(mode: string, email: string, message: string, asPage: boolean, request: Request) {
+  if (!asPage) return jsonResult({ ok: false, message }, request);
+  const back =
+    mode === "register"
+      ? "register"
+      : mode === "reset-code"
+        ? "reset-code"
+        : mode === "reset"
+          ? "reset"
+          : "signin";
   const error = /no account/i.test(message)
     ? "missing"
     : /bad code/i.test(message)
@@ -31,23 +43,27 @@ function fail(mode: string, email: string, message: string, asPage: boolean) {
   });
 }
 
-function sessionCookie(token: string | null): string {
-  if (!token) return "er_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0";
-  return `er_session=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=1209600`;
+function sessionCookie(token: string | null, request: Request): string {
+  const secure = cookieShouldBeSecure({
+    nodeEnv: process.env.NODE_ENV,
+    requestUrl: request.url,
+    forwardedProto: request.headers.get("x-forwarded-proto"),
+  });
+  return sessionCookieHeader(token, secure);
 }
 
-function jsonResult(body: unknown, cookie?: string | null, status = 200) {
+function jsonResult(body: unknown, request: Request, cookie?: string | null, status = 200) {
   const headers = new Headers({ "cache-control": "no-store" });
-  if (cookie !== undefined) headers.append("set-cookie", sessionCookie(cookie));
+  if (cookie !== undefined) headers.append("set-cookie", sessionCookie(cookie, request));
   return Response.json(body, { status, headers });
 }
 
-function page(body: string, status = 200, cookie?: string | null) {
+function page(body: string, request: Request, status = 200, cookie?: string | null) {
   const headers = new Headers({
     "content-type": "text/html; charset=utf-8",
     "cache-control": "no-store",
   });
-  if (cookie !== undefined) headers.append("set-cookie", sessionCookie(cookie));
+  if (cookie !== undefined) headers.append("set-cookie", sessionCookie(cookie, request));
   return new Response(
     `<!doctype html><html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>香港租租</title><body style="font-family:sans-serif;background:#f4efe6;color:#1c2430;padding:2rem;line-height:1.5">${body}</body></html>`,
     { status, headers },
@@ -63,25 +79,66 @@ function cookieValue(header: string | null, name: string): string {
   return "";
 }
 
+async function readBodyFields(request: Request): Promise<Record<string, string>> {
+  if (request.method !== "POST") return {};
+  const contentType = request.headers.get("content-type") ?? "";
+  try {
+    if (contentType.includes("application/json")) {
+      const body = (await request.json()) as Record<string, unknown>;
+      const out: Record<string, string> = {};
+      for (const [key, value] of Object.entries(body)) {
+        if (typeof value === "string") out[key] = value;
+        else if (typeof value === "number" || typeof value === "boolean") out[key] = String(value);
+      }
+      return out;
+    }
+    if (
+      contentType.includes("application/x-www-form-urlencoded") ||
+      contentType.includes("multipart/form-data")
+    ) {
+      const form = await request.formData();
+      const out: Record<string, string> = {};
+      for (const [key, value] of form.entries()) {
+        if (typeof value === "string") out[key] = value;
+      }
+      return out;
+    }
+  } catch {
+    /* fall through to query string */
+  }
+  return {};
+}
+
 export async function openAccount(request: Request) {
   const url = new URL(request.url);
-  const wantsPage = url.searchParams.get("page") === "1";
+  if (rejectGetWithSecretParams(request.method, url.searchParams)) {
+    return new Response("Method Not Allowed", {
+      status: 405,
+      headers: { allow: "POST", "cache-control": "no-store" },
+    });
+  }
+
+  const body = await readBodyFields(request);
+  const pick = (name: string) => body[name] ?? url.searchParams.get(name) ?? "";
+
+  const wantsPage = pick("page") === "1";
   try {
-    let email = url.searchParams.get("email") ?? "";
-    let password = url.searchParams.get("password") ?? "";
-    let name = url.searchParams.get("name") ?? "";
-    let mode = url.searchParams.get("mode") ?? "register";
-    const confirm = url.searchParams.get("confirm") ?? "";
-    const nextPassword = (url.searchParams.get("next") ?? "").trim();
-    const code = url.searchParams.get("code") ?? "";
-    const challenge = url.searchParams.get("challenge") ?? "";
+    let email = pick("email");
+    let password = pick("password");
+    let name = pick("name");
+    let mode = pick("mode") || "register";
+    const confirm = pick("confirm");
+    const nextPassword = pick("next").trim();
+    const code = pick("code");
+    const challenge = pick("challenge");
     const session = cookieValue(request.headers.get("cookie"), "er_session");
+
     if (mode === "signout") {
-      return jsonResult({ ok: true }, null);
+      return jsonResult({ ok: true }, request, null);
     }
     if (mode === "security") {
       const view = await securityView(session);
-      return jsonResult(view ? { ok: true, ...view } : { ok: false });
+      return jsonResult(view ? { ok: true, ...view } : { ok: false }, request);
     }
     if (mode === "mfa-start" || mode === "mfa-confirm" || mode === "mfa-off") {
       if (mode === "mfa-start") await beginMfa(session);
@@ -105,22 +162,12 @@ export async function openAccount(request: Request) {
     }
     if (mode === "me") {
       const user = await findAccountUser(cookieValue(request.headers.get("cookie"), "er_session"));
-      return jsonResult(user ? { ok: true, user: { id: user.id, name: user.email.split("@")[0], email: user.email } } : { ok: false });
+      return jsonResult(user ? { ok: true, user: { id: user.id, name: user.email.split("@")[0], email: user.email } } : { ok: false }, request);
     }
-    if (request.method === "POST") {
-      try {
-        const body = (await request.json()) as { email?: string; password?: string; name?: string; mode?: string };
-        email = body.email ?? email;
-        password = body.password ?? password;
-        name = body.name ?? name;
-        mode = body.mode ?? mode;
-      } catch {
-        /* query string is enough */
-      }
-    }
+
     password = password.trim();
-    if ((mode === "register" || mode === "reset") && confirm && confirm !== password) {
-      return fail(mode, email, "mismatch", wantsPage || request.method === "GET");
+    if ((mode === "register" || mode === "reset-code") && confirm && confirm !== password) {
+      return fail(mode, email, "mismatch", wantsPage || request.method === "GET", request);
     }
     const signed = await openEmailAccount({ email, password, name, mode, code, challenge });
     try {
@@ -142,26 +189,24 @@ export async function openAccount(request: Request) {
         headers: { location: `/login?${query.toString()}`, "cache-control": "no-store" },
       });
     }
+    // Prefer HttpOnly cookie as source of truth; desk resolves via mode=me.
+    // Avoid putting the bearer token in the URL hash (token bleed).
     if ((wantsPage || request.method === "GET") && signed.ok && mode !== "signout" && mode !== "me") {
-      const saved = {
-        token: signed.token,
-        user: {
-          id: signed.user.id,
-          displayName: signed.user.name,
-          primaryEmail: signed.user.email,
-          profileImageUrl: null,
-          isDevFallback: false,
-        },
-      };
       const headers = new Headers({
-        location: `/desk#auth=${encodeURIComponent(JSON.stringify(saved))}`,
+        location: "/desk",
         "cache-control": "no-store",
       });
-      headers.append("set-cookie", sessionCookie(signed.token));
+      headers.append("set-cookie", sessionCookie(signed.token, request));
       return new Response(null, { status: 302, headers });
     }
-    if (!wantsPage && request.method !== "GET") return jsonResult(signed, signed.ok ? signed.token : undefined);
-    if (!signed.ok) return fail(mode, email, signed.message, true);
+    if (!wantsPage && request.method !== "GET") {
+      if (!signed.ok && signed.next) {
+        return jsonResult(signed, request);
+      }
+      return jsonResult(signed, request, signed.ok ? signed.token : undefined);
+    }
+    if (!signed.ok) return fail(mode, email, signed.message, true, request);
+    // Legacy HTML bridge: sessionStorage only (HttpOnly cookie already set).
     const saved = {
       token: signed.token,
       user: {
@@ -177,10 +222,8 @@ export async function openAccount(request: Request) {
 const saved = ${json};
 sessionStorage.setItem("grok-auth.bearer-token", saved.token);
 sessionStorage.setItem("grok-auth.user", JSON.stringify(saved.user));
-localStorage.setItem("grok-auth.bearer-token", saved.token);
-localStorage.setItem("grok-auth.user", JSON.stringify(saved.user));
 location.replace("/desk");
-</script><p><a href="/desk">進入帳簿</a></p>`, 200, signed.token);
+</script><p><a href="/desk">進入帳簿</a></p>`, request, 200, signed.token);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Account request failed";
     try {
@@ -188,7 +231,7 @@ location.replace("/desk");
     } catch {
       /* ignore */
     }
-    return fail("signin", "", message, true);
+    return fail("signin", "", message, true, request);
   }
 }
 
