@@ -18,6 +18,9 @@ export const CLASSES: { id: RentClass; zh: string; en: string; hintZh: string; h
 
 type Cell = { hk: number; kln: number; nt: number; thin: RentRegion[] };
 
+/** YYYY-MM for LATEST_RENTS (RVD provisional regional averages). */
+export const LATEST_RENTS_YM = "2026-04";
+
 /** April 2026 provisional average rents, $/m² per month. */
 export const LATEST_RENTS: Record<RentClass, Cell> = {
   A: { hk: 515, kln: 433, nt: 355, thin: [] },
@@ -39,7 +42,7 @@ export const RENT_INDEX: RentIndexPoint[] = [
   { ym: "2025-09", value: 199.9, provisional: false },
   { ym: "2025-10", value: 199.9, provisional: false },
   { ym: "2025-11", value: 200.4, provisional: false },
-  { ym: "2025-12", value: 200.5, provisional: false },
+  { ym: "2026-12", value: 200.5, provisional: false },
   { ym: "2026-01", value: 200.8, provisional: false },
   { ym: "2026-02", value: 201.0, provisional: true },
   { ym: "2026-03", value: 202.2, provisional: true },
