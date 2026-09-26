@@ -44,6 +44,9 @@ export type Tenant = {
   notes: string;
 };
 
+/** Deposit collection status derived from owed vs received amounts. */
+export type DepositPaidStatus = "unpaid" | "partial" | "paid";
+
 export type Tenancy = {
   id: string;
   propertyId: string;
@@ -51,7 +54,12 @@ export type Tenancy = {
   start: string;
   end: string;
   rent: number;
+  /** 應收按金 — amount owed. */
   deposit: number;
+  /** 已收金額 — amount received; defaults to 0 for legacy ledgers. */
+  depositPaidAmount: number;
+  /** 收款日 — when deposit was (last) received; undefined when unpaid. */
+  depositPaidOn?: string;
   dueDay: number;
   stamped: boolean;
   active: boolean;
